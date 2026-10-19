@@ -14,7 +14,6 @@ dependencies = [
   "pwdlib[argon2]>=0.2,<1",
   "pyjwt>=2.10,<3",
   "pipecat-ai[sarvam,webrtc,silero]==1.12.0",
-  "psycopg>=3.3.6",
   "httpx>=0.28,<1",
   "cryptography>=46,<51",
 ]

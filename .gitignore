@@ -1,4 +1,5 @@
 # Environment variants; keep the template
+.venv/
 .env.*
 .env
 
@@ -11,3 +12,13 @@
 *.db-journal
 *.db-wal
 *.db-shm
+*.db
+
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Local browser profile
+.meeting-browser/
