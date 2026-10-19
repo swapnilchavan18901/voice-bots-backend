@@ -1,0 +1,7 @@
+*
+!app/
+!app/**
+!requirements-meeting-worker.txt
+!Dockerfile.meeting-worker
+**/__pycache__/
+**/*.pyc

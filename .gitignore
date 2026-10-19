@@ -1,0 +1,13 @@
+# Environment variants; keep the template
+.env.*
+.env
+
+!.env.example
+
+# macOS metadata
+.DS_Store
+
+# SQLite sidecar files
+*.db-journal
+*.db-wal
+*.db-shm
