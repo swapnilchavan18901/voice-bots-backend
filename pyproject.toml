@@ -1,5 +1,5 @@
 [project]
-name = "voice-bots-backend"
+name = "sia-backend"
 version = "0.1.0"
 description = "Organization-scoped Sarvam voice bots over WebRTC"
 requires-python = ">=3.12,<3.14"

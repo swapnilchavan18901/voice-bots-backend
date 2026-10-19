@@ -3,7 +3,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.constants.constants import LANGUAGE_NAMES
+from app.constants.constants import LANGUAGE_NAMES, PRODUCT_NAME
 
 
 def doctors_text(state):
@@ -30,7 +30,7 @@ def role_message(state):
     if facts.get("slot_minutes"):
         hours += f", {facts['slot_minutes']}-minute slots"
     language = LANGUAGE_NAMES.get(bot.language, bot.language)
-    message = f"""You are {getattr(bot, "name", "Receptionist")},
+    message = f"""You are {PRODUCT_NAME}, acting as {getattr(bot, "name", "Receptionist")},
 the friendly receptionist at {clinic_name}, on a phone call.
 Current date and time: {today} ({timezone}).
 

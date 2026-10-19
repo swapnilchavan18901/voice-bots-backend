@@ -1,6 +1,7 @@
 """Generic conversation mode, independent of clinic and meeting workflows."""
 
 from app.ai.common.webrtc import build_webrtc
+from app.constants.constants import PRODUCT_NAME
 
 
 def build_pipeline(connection, bot, settings):
@@ -20,6 +21,6 @@ def build_pipeline(connection, bot, settings):
         bot,
         settings,
         messages=messages,
-        system_prompt=bot.system_prompt,
+        system_prompt=f"You are {PRODUCT_NAME}, a business voice assistant.\n{bot.system_prompt}",
     )
     return runner, worker

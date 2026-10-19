@@ -1,8 +1,8 @@
-# Voxa Backend
+# Sia Backend
 
 ## Purpose and architectural approach
 
-Voxa connects voice conversations to concrete business workflows: booking a clinic visit, answering a question during a meeting, and carrying useful meeting context forward. This backend owns those workflows, their access rules, and the lifecycle of the external services involved.
+Sia connects voice conversations to concrete business workflows: booking a clinic visit, answering a question during a meeting, and carrying useful meeting context forward. This backend owns those workflows, their access rules, and the lifecycle of the external services involved.
 
 The central design decision is to separate conversational interpretation from business authority. Speech models understand and generate language; business components decide what may happen, validate the action, and persist the outcome. The frontend receives information prepared for the current user and workspace.
 
