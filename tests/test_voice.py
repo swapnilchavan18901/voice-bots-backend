@@ -9,7 +9,7 @@ from pydantic import SecretStr
 
 from app.ai.sessions import VoiceSessions
 from app.env import Settings
-from app.schemas.api import Offer
+from app.types import Offer
 
 
 def settings(**kwargs):
@@ -76,7 +76,10 @@ async def test_voice_capacity_and_invalid_offer(monkeypatch):
         "build_pipeline",
         lambda *_: (SimpleNamespace(add_workers=AsyncMock()), object()),
     )
-    manager = VoiceSessions(settings(sarvam_api_key=SecretStr("test-key"), max_voice_sessions=1))
+    from app.constants import constants
+
+    monkeypatch.setattr(constants, "MAX_VOICE_SESSIONS", 1)
+    manager = VoiceSessions(settings(sarvam_api_key=SecretStr("test-key")))
     bot = SimpleNamespace(id=uuid4(), organization_id=uuid4())
     manager.pending = 1
     with pytest.raises(HTTPException) as exc:

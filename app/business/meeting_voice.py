@@ -15,22 +15,10 @@ from app.ai.meeting.pipeline import MeetingVoice
 from app.ai.meeting.speech import MeetingSpeech
 from app.business.meeting_memory import MeetingMemoryService
 from app.clients import AttendeeClient
+from app.constants import constants
+from app.constants.constants import STATES, TERMINAL
 from app.db.models import Meeting, MeetingCapture, utcnow
 from app.db.session import SessionFactory
-
-STATES = {
-    "ready": ("starting", "The bot is preparing to join."),
-    "joining": ("joining", "The bot is joining the meeting."),
-    "waiting_room": ("waiting", "Admit the bot from the host account."),
-    "joined_not_recording": ("connected", "Waiting for recording permission."),
-    "joined_recording": ("connected", "Listening. Address Sia by name to ask a question."),
-    "leaving": ("stopping", "The bot is leaving."),
-    "post_processing": ("stopped", "The bot left; meeting media is processing."),
-    "ended": ("stopped", "The meeting session ended."),
-    "fatal_error": ("failed", "Attendee could not join or remain in the meeting."),
-    "data_deleted": ("stopped", "Meeting media was deleted from Attendee."),
-}
-TERMINAL = {"ended", "fatal_error", "data_deleted"}
 
 
 class AudioGrantLogFilter(logging.Filter):
@@ -144,7 +132,7 @@ class MeetingVoiceService:
             {
                 "sub": str(capture.id),
                 "aud": "attendee-audio",
-                "exp": utcnow() + timedelta(seconds=self.settings.meeting_voice_seconds),
+                "exp": utcnow() + timedelta(seconds=constants.MEETING_VOICE_SECONDS),
             },
             self.settings.jwt_secret.get_secret_value(),
             algorithm="HS256",
@@ -157,12 +145,12 @@ class MeetingVoiceService:
                 "bots",
                 json={
                     "meeting_url": meeting.meet_url,
-                    "bot_name": self.settings.meeting_voice_name,
+                    "bot_name": constants.MEETING_VOICE_NAME,
                     "deduplication_key": str(capture.id),
                     "automatic_leave_settings": {
-                        "max_uptime_seconds": self.settings.meeting_voice_seconds,
+                        "max_uptime_seconds": constants.MEETING_VOICE_SECONDS,
                         "only_participant_in_meeting_timeout_seconds": (
-                            self.settings.meeting_empty_leave_seconds
+                            constants.MEETING_EMPTY_LEAVE_SECONDS
                         ),
                     },
                     "websocket_settings": {
@@ -196,7 +184,7 @@ class MeetingVoiceService:
         capture.status, capture.detail = STATES.get(
             provider_state, ("joining", "Checking bot status.")
         )
-        capture.detail = capture.detail.replace("Sia", self.settings.meeting_voice_name)
+        capture.detail = capture.detail.replace("Sia", constants.MEETING_VOICE_NAME)
         capture.updated_at = capture.last_synced_at = utcnow()
         if capture.status == "connected":
             meeting.status = "in_progress"
@@ -319,7 +307,7 @@ class MeetingVoiceService:
             await websocket.accept()
             consumer = asyncio.create_task(runtime.consume())
             flusher = asyncio.create_task(runtime.flush_idle())
-            async with asyncio.timeout(self.settings.meeting_voice_seconds):
+            async with asyncio.timeout(constants.MEETING_VOICE_SECONDS):
                 while True:
                     raw = await websocket.receive_text()
                     if len(raw) > 100_000:

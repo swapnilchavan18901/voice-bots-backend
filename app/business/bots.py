@@ -1,7 +1,8 @@
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.business.organizations import MANAGE_ROLES, require_membership
+from app.business.organizations import require_membership
+from app.constants.constants import MANAGE_ROLES
 from app.db.models import Bot, BotTemplate
 
 

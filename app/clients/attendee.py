@@ -3,6 +3,8 @@
 import httpx
 from fastapi import HTTPException
 
+from app.constants import constants
+
 
 class AttendeeClient:
     def __init__(self, settings):
@@ -16,7 +18,7 @@ class AttendeeClient:
         try:
             response = await self.http.request(
                 method,
-                f"{self.settings.attendee_api_url.rstrip('/')}/api/v1/{path}",
+                f"{constants.ATTENDEE_API_URL.rstrip('/')}/api/v1/{path}",
                 headers={"Authorization": f"Token {key}"},
                 **kwargs,
             )

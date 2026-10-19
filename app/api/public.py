@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.dependencies import DB, bearer
 from app.business import api_keys, public_voice
-from app.schemas.api import Answer, Offer, VoiceGrantOut
+from app.types import Answer, Offer, VoiceGrantOut
 
 router = APIRouter(tags=["public voice"])
 VoiceCredentials = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]

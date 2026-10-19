@@ -7,9 +7,9 @@ from app.ai.sessions import VoiceSessions
 from app.api import auth, bots, clinic, health, meetings, organizations, platform, public
 from app.business.meeting_scheduler import start as start_meeting_scheduler
 from app.business.meeting_voice import MeetingVoiceService
-from app.core.cors import DashboardCORSMiddleware
 from app.db.session import engine
 from app.env import get_settings
+from app.utils.cors import DashboardCORSMiddleware
 
 
 @asynccontextmanager

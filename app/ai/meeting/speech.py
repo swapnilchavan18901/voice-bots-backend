@@ -6,10 +6,13 @@ import io
 import json
 import wave
 
-from app.ai.common.text_normalizer import normalize_for_speech
-from app.ai.meeting.prompts import SCOPE_POLICY, filler_text
 from app.clients import create_sarvam_client
+from app.constants import constants
+from app.constants.constants import SCOPE_POLICY
 from app.db.models import utcnow
+from app.types import ScopeDecision, SpokenReply
+from app.utils.filler import filler_text
+from app.utils.text_normalizer import normalize_for_speech
 
 
 def wav_audio(pcm: bytes, sample_rate=16000):
@@ -34,20 +37,15 @@ class MeetingSpeech:
             "/speech-to-text",
             files={"file": ("turn.wav", wav_audio(pcm), "audio/wav")},
             data={
-                "model": self.settings.sarvam_stt_model,
+                "model": constants.SARVAM_STT_MODEL,
                 "language_code": "unknown",
-                "keyterms": json.dumps([self.settings.meeting_voice_name]),
+                "keyterms": json.dumps([constants.MEETING_VOICE_NAME]),
             },
         )
         response.raise_for_status()
         return response.json().get("transcript", "").strip()
 
     async def is_in_scope(self, question, meeting, transcript, memory=""):
-        from pydantic import BaseModel, StrictBool
-
-        class ScopeDecision(BaseModel):
-            in_scope: StrictBool
-
         evidence = [
             {"speaker": entry.get("speaker"), "text": entry.get("text")}
             for entry in transcript[-60:]
@@ -56,7 +54,7 @@ class MeetingSpeech:
         response = await self.http.post(
             "/v1/chat/completions",
             json={
-                "model": self.settings.sarvam_llm_model,
+                "model": constants.SARVAM_LLM_MODEL,
                 "max_tokens": 40,
                 "reasoning_effort": None,
                 "response_format": {"type": "json_object"},
@@ -87,16 +85,11 @@ class MeetingSpeech:
         async with self._filler_lock:
             if self._filler_audio is None:
                 self._filler_audio = await self.synthesize(
-                    filler_text(self.settings.meeting_voice_language)
+                    filler_text(constants.MEETING_VOICE_LANGUAGE)
                 )
             return self._filler_audio
 
     async def answer(self, question, meeting, transcript, memory=""):
-        from pydantic import BaseModel, Field
-
-        class SpokenReply(BaseModel):
-            spoken_answer: str = Field(min_length=1)
-
         recent = transcript[-60:]
         asker = next(
             (
@@ -115,7 +108,7 @@ class MeetingSpeech:
         response = await self.http.post(
             "/v1/chat/completions",
             json={
-                "model": self.settings.sarvam_llm_model,
+                "model": constants.SARVAM_LLM_MODEL,
                 "max_tokens": 250,
                 "reasoning_effort": None,
                 "response_format": {"type": "json_object"},
@@ -123,7 +116,7 @@ class MeetingSpeech:
                     {
                         "role": "system",
                         "content": (
-                            f"You are {self.settings.meeting_voice_name}, a meeting assistant. "
+                            f"You are {constants.MEETING_VOICE_NAME}, a meeting assistant. "
                             'Return JSON with exactly one field: "spoken_answer". '
                             "Answer the CURRENT QUESTION directly, usually in one or two "
                             "short sentences and at most 60 words. Start with the answer, "
@@ -158,7 +151,7 @@ class MeetingSpeech:
                             "was agreed.' If Riya only promised to send the designs, answer "
                             "'Riya said she would send them, but delivery wasn't confirmed.' "
                             "Use examples only as style guides, never as meeting facts. "
-                            f"Reply in {self.settings.meeting_voice_language}."
+                            f"Reply in {constants.MEETING_VOICE_LANGUAGE}."
                         ),
                     },
                     {
@@ -187,16 +180,16 @@ class MeetingSpeech:
         return SpokenReply.model_validate_json(content).spoken_answer.strip()
 
     async def synthesize(self, text):
-        spoken = normalize_for_speech(text, self.settings.meeting_voice_language)
+        spoken = normalize_for_speech(text, constants.MEETING_VOICE_LANGUAGE)
         if not spoken:
             raise ValueError("No speakable text")
         response = await self.http.post(
             "/text-to-speech",
             json={
                 "text": spoken[:1500],
-                "target_language_code": self.settings.meeting_voice_language,
-                "model": self.settings.sarvam_tts_model,
-                "speaker": self.settings.sarvam_voice,
+                "target_language_code": constants.MEETING_VOICE_LANGUAGE,
+                "model": constants.SARVAM_TTS_MODEL,
+                "speaker": constants.SARVAM_VOICE,
                 "speech_sample_rate": 16000,
                 "output_audio_codec": "wav",
             },
@@ -211,12 +204,12 @@ class MeetingSpeech:
         return bytes(result)
 
     async def memory(self, previous, transcript, today):
-        from app.ai.meeting.prompts import MEMORY_POLICY
+        from app.constants.constants import MEMORY_POLICY
 
         response = await self.http.post(
             "/v1/chat/completions",
             json={
-                "model": self.settings.sarvam_llm_model,
+                "model": constants.SARVAM_LLM_MODEL,
                 "max_tokens": 8000,
                 "reasoning_effort": None,
                 "messages": [
@@ -243,3 +236,4 @@ class MeetingSpeech:
 
     async def close(self):
         await self.http.aclose()
+

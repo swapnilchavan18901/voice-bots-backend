@@ -3,9 +3,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
-from app.core.security import DUMMY_HASH, access_token, password_hasher
 from app.db.models import Membership, Organization, User
-from app.schemas.api import AuthOut, UserOut
+from app.types import AuthOut, UserOut
+from app.utils.security import DUMMY_HASH, access_token, password_hasher
 
 
 async def register(db, data):

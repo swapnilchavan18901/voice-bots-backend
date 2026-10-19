@@ -4,7 +4,6 @@ from pipecat.flows import FlowManager
 
 from app.ai.clinic.flow import nodes
 from app.ai.clinic.flow.turns import CallerTurns
-from app.ai.common.text_normalizer import SpeechNormalizer
 from app.ai.common.webrtc import build_webrtc
 from app.db.session import SessionFactory
 
@@ -15,7 +14,6 @@ def build_pipeline(connection, bot, settings):
         connection,
         bot,
         settings,
-        text_filters=[SpeechNormalizer(bot.language)],
         input_processors=[turns],
     )
     flow = FlowManager(

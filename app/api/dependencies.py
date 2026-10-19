@@ -6,9 +6,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.auth import find_user
-from app.core.security import decode_token
 from app.db.models import User
 from app.db.session import get_db
+from app.utils.security import decode_token
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 bearer = HTTPBearer(auto_error=False)

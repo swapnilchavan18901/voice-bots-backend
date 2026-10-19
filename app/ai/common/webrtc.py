@@ -13,6 +13,9 @@ from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.workers.runner import WorkerRunner
 
 from app.clients import create_sarvam_services
+from app.constants import constants
+from app.utils.filler import ResponseFiller
+from app.utils.text_normalizer import SpeechNormalizer
 
 
 def build_webrtc(
@@ -33,7 +36,7 @@ def build_webrtc(
         settings,
         bot.language,
         system_prompt=system_prompt,
-        text_filters=text_filters,
+        text_filters=[SpeechNormalizer(bot.language), *text_filters],
     )
     aggregators = LLMContextAggregatorPair(
         LLMContext(messages=list(messages)),
@@ -48,6 +51,7 @@ def build_webrtc(
                 *input_processors,
                 user,
                 llm,
+                ResponseFiller(bot.language, constants.FILLER_DELAY_MS),
                 tts,
                 transport.output(),
                 assistant,

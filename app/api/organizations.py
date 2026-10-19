@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from app.api.dependencies import DB, CurrentUser
 from app.business import organizations, workspace
-from app.schemas.api import (
+from app.types import (
     InviteAccept,
     InviteCreate,
     InviteOut,

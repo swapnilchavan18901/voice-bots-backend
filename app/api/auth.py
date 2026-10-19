@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.dependencies import DB, CurrentUser
 from app.business import auth
-from app.schemas.api import AuthOut, Credentials, Register, UserOut
+from app.types import AuthOut, Credentials, Register, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

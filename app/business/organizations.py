@@ -1,14 +1,14 @@
+
 from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.core.security import opaque_token, token_digest
+from app.constants.constants import MANAGE_ROLES
 from app.db.models import Invitation, Membership, Organization, User, utcnow
-from app.schemas.api import InviteOut
-
-MANAGE_ROLES = frozenset({"owner", "admin"})
+from app.types import InviteOut
+from app.utils.security import opaque_token, token_digest
 
 
 async def require_membership(db, org_id, user_id, roles=None):

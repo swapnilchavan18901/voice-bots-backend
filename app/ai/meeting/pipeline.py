@@ -11,6 +11,8 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams, VADState
 
 from app.ai.meeting.prompts import scope_refusal
+from app.constants import constants
+from app.utils.filler import with_filler
 
 
 @dataclass
@@ -38,7 +40,7 @@ class MeetingVoice:
         self.answer_task = None
         self.generation = 0
         self.armed: dict[str, float] = {}
-        name = re.escape(settings.meeting_voice_name)
+        name = re.escape(constants.MEETING_VOICE_NAME)
         self.address = re.compile(
             rf"^\s*(?:(?:hey|hi|hello|okay|ok)\s*[,!]?\s*)?{name}(?:\b|(?=[,!?]))[\s,:!?-]*(.*)$",
             re.I,
@@ -69,7 +71,7 @@ class MeetingVoice:
             raise ValueError("Invalid PCM frame size")
         speaker = self.speakers.get(participant)
         if not speaker:
-            if len(self.speakers) >= self.settings.meeting_voice_max_participants:
+            if len(self.speakers) >= constants.MEETING_VOICE_MAX_PARTICIPANTS:
                 raise ValueError("Participant capacity exceeded")
             vad = SileroVADAnalyzer(params=VADParams(start_secs=0.15, stop_secs=0.6))
             vad.set_sample_rate(16000)
@@ -150,38 +152,32 @@ class MeetingVoice:
                 self.queue.task_done()
 
     async def reply(self, question, generation):
-        answer_task = None
-        filler_task = None
-        try:
-            self.phase = "thinking"
+        async def prepare_answer():
             memory = await self.get_memory() if self.get_memory else ""
             if not await self.speech.is_in_scope(question, self.meeting, self.history, memory):
-                response = scope_refusal(self.settings.meeting_voice_language)
+                response = scope_refusal(constants.MEETING_VOICE_LANGUAGE)
             else:
-                answer_task = asyncio.create_task(
-                    self.speech.answer(question, self.meeting, self.history, memory)
+                response = await self.speech.answer(
+                    question, self.meeting, self.history, memory
                 )
-                delay = self.settings.meeting_filler_delay_ms / 1000
-                done, _ = await asyncio.wait({answer_task}, timeout=delay)
-                if not done and delay > 0:
-                    filler_task = asyncio.create_task(self.speech.filler_audio())
-                    done, _ = await asyncio.wait(
-                        {answer_task, filler_task}, return_when=asyncio.FIRST_COMPLETED
-                    )
-                    # If the answer is ready, skip the filler entirely.
-                    if not answer_task.done():
-                        try:
-                            filler_audio = await filler_task
-                        except Exception:
-                            filler_audio = None  # A filler failure must not lose the answer.
-                        if filler_audio and generation == self.generation:
-                            self.phase = "speaking"
-                            await self.send_audio(filler_audio, generation)
-                            self.phase = "thinking"
-                response = await answer_task
-            if generation != self.generation:
-                return
-            audio = await self.speech.synthesize(response)
+            return response, await self.speech.synthesize(response)
+
+        async def speak_filler():
+            try:
+                audio = await self.speech.filler_audio()
+                if generation == self.generation:
+                    self.phase = "speaking"
+                    await self.send_audio(audio, generation)
+                    self.phase = "thinking"
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass  # Filler failure must never discard the real answer.
+
+        try:
+            self.phase = "thinking"
+            delay = constants.FILLER_DELAY_MS
+            response, audio = await with_filler(prepare_answer(), delay, speak_filler)
             if generation != self.generation:
                 return
             self.phase = "speaking"
@@ -189,18 +185,13 @@ class MeetingVoice:
             if generation != self.generation:
                 return
             # Filler speech never enters this transcript or the answer context.
-            entry = await self.save_turn(self.settings.meeting_voice_name, response, "bot", False)
+            entry = await self.save_turn(constants.MEETING_VOICE_NAME, response, "bot", False)
             self.history.append(entry)
         except asyncio.CancelledError:
             raise
         except Exception:
             self.error = "The bot could not finish its reply. It is still listening."
         finally:
-            tasks = [task for task in (answer_task, filler_task) if task]
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
             if generation == self.generation:
                 self.phase = "listening"
 

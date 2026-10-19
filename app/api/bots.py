@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Response
 
 from app.api.dependencies import DB, CurrentUser
 from app.business import bots
-from app.schemas.api import Answer, BotConfig, BotCreate, BotOut, Offer
+from app.types import Answer, BotConfig, BotCreate, BotOut, Offer
 
 router = APIRouter(prefix="/organizations/{org_id}/bots", tags=["bots"])
 

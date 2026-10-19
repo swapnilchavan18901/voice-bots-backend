@@ -7,9 +7,10 @@ from sqlalchemy import select
 from app.api.dependencies import DB, CurrentUser
 from app.business import bots, clinic
 from app.business.clinic_context import sync_doctors
-from app.business.organizations import MANAGE_ROLES, require_membership
+from app.business.organizations import require_membership
+from app.constants.constants import MANAGE_ROLES
 from app.db.models import Bot
-from app.schemas.clinic import (
+from app.types import (
     Booking,
     Caller,
     ChangeAppointment,

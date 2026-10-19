@@ -14,10 +14,7 @@ from pipecat.flows import FlowsFunctionSchema, NodeConfig
 
 from app.ai.clinic.flow import handlers as h
 from app.ai.clinic.flow.prompts import doctors_text, facts_text, role_message
-
-TOPICS = ["hours", "address", "phone", "fees", "doctors", "parking", "booking"]
-
-TIME = {"type": "string", "description": "YYYY-MM-DDTHH:MM, clinic local time"}
+from app.constants.constants import TIME, TOPICS
 
 
 def _fn(

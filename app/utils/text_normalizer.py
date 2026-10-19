@@ -19,32 +19,7 @@ from datetime import date, datetime
 
 from pipecat.utils.text.base_text_filter import BaseTextFilter
 
-MONTHS = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
-DAYS = {
-    "Mon": "Monday",
-    "Tue": "Tuesday",
-    "Wed": "Wednesday",
-    "Thu": "Thursday",
-    "Fri": "Friday",
-    "Sat": "Saturday",
-    "Sun": "Sunday",
-}
-
-EMOJI = re.compile("[\U0001f300-\U0001faff\U00002600-\U000027bf\U0001f1e6-\U0001f1ff\u200d\ufe0f]+")
-
+from app.constants.constants import _ONES, _TENS, ABBREVIATIONS, DAYS, EMOJI, MONTHS
 
 # ---------- helpers ----------
 
@@ -75,31 +50,6 @@ def _spell_digits(digits: str) -> str:
     else:
         groups = [d[i : i + 4] for i in range(0, len(d), 4)]
     return ", ".join(" ".join(g) for g in groups)
-
-
-_ONES = [
-    "zero",
-    "one",
-    "two",
-    "three",
-    "four",
-    "five",
-    "six",
-    "seven",
-    "eight",
-    "nine",
-    "ten",
-    "eleven",
-    "twelve",
-    "thirteen",
-    "fourteen",
-    "fifteen",
-    "sixteen",
-    "seventeen",
-    "eighteen",
-    "nineteen",
-]
-_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
 
 
 def _number_words(n: int) -> str:
@@ -230,23 +180,6 @@ def _ranges(t: str) -> str:
     t = re.sub(r"(\d(?:\s?[AP]M)?)\s*[–—]\s*(\d)", r"\1 to \2", t)
     t = re.sub(r"(?<![\d-])(\d{1,2}(?:\s?[AP]M)?)\s*-\s*(\d{1,2})(?![\d-])", r"\1 to \2", t)
     return t
-
-
-ABBREVIATIONS = [
-    (r"\bDr\.?(?=\s+[A-Z])", "Doctor"),
-    (r"\be\.g\.,?", "for example"),
-    (r"\bi\.e\.,?", "that is"),
-    (r"\betc\.", "et cetera"),
-    (r"\bapprox\.?", "approximately"),
-    (r"\bappt\.?\b", "appointment"),
-    (r"\bvs\.?(?=\s)", "versus"),
-    (r"\bNo\.\s?(?=\d)", "number "),
-    (r"#\s?(?=\d)", "number "),
-    (r"\b(\d+)\s?-?\s?mins?\b", r"\1 minutes"),
-    (r"\b(\d+)\s?-?\s?hrs?\b", r"\1 hours"),
-    (r"\b1 minutes\b", "1 minute"),
-    (r"\b1 hours\b", "1 hour"),
-]
 
 
 def _number_compounds(t: str) -> str:

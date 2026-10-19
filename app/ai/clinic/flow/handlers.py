@@ -1,6 +1,5 @@
 """Reference Clinic Bot handlers adapted to async, bot-scoped database services."""
 
-import asyncio
 import logging
 import re
 from datetime import date, datetime
@@ -14,15 +13,12 @@ from pydantic import ValidationError
 from app.ai.clinic.flow import nodes
 from app.ai.clinic.flow.turns import confirmed
 from app.business import clinic as svc
+from app.constants import constants
 from app.db.models import ClinicDoctor
-from app.schemas.clinic import Booking, ChangeAppointment, Reschedule
+from app.types import Booking, ChangeAppointment, Reschedule
+from app.utils.filler import filler_text, with_filler
 
 logger = logging.getLogger(__name__)
-FILLERS = {
-    "en-IN": "One moment, let me check that for you.",
-    "hi-IN": "एक पल, मैं देख रही हूँ।",
-    "mr-IN": "एक क्षण, मी तपासून सांगते.",
-}
 
 
 async def _call(fm, fn, *args):
@@ -37,17 +33,15 @@ async def _call(fm, fn, *args):
                     item["doctor_name"] = doctor.name if doctor else "Doctor record unavailable"
             return result
 
-    task = asyncio.create_task(run())
-    done, _ = await asyncio.wait({task}, timeout=0.7)
-    if not done:
+    async def speak():
         await fm.worker.queue_frame(
             TTSSpeakFrame(
-                text=FILLERS.get(fm.state["bot"].language, FILLERS["en-IN"]),
-                append_to_context=False,
+                text=filler_text(fm.state["bot"].language), append_to_context=False
             )
         )
+
     try:
-        return await task, None
+        return await with_filler(run(), constants.FILLER_DELAY_MS, speak), None
     except HTTPException as exc:
         logger.info(
             "Clinic action rejected: action=%s status=%s detail=%s",

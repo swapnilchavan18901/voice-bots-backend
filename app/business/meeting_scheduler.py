@@ -6,8 +6,8 @@ from datetime import timedelta
 
 from sqlalchemy import func, select
 
-from app.business.meeting_voice import TERMINAL
 from app.clients import create_google_client
+from app.constants.constants import TERMINAL
 from app.db.models import Meeting, MeetingCapture, MeetingGoogleConnection, utcnow
 from app.db.session import SessionFactory
 from app.integrations.google_meet_calendar import sync

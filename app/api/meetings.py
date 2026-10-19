@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.api.dependencies import DB, CurrentUser
 from app.business.meeting_calendar import assign_event, organizer_organizations
 from app.business.organizations import list_organizations, require_membership
+from app.constants import constants
 from app.db.models import (
     Meeting,
     MeetingCalendar,
@@ -19,8 +20,7 @@ from app.db.models import (
 )
 from app.env import get_settings
 from app.integrations.google_meet_calendar import lock
-from app.schemas.api import OrgOut
-from app.schemas.meetings import AssignMeeting, EventOut, MeetingOut, MeetingSchedule
+from app.types import AssignMeeting, EventOut, MeetingOut, MeetingSchedule, OrgOut
 
 router = APIRouter(tags=["meetings"])
 
@@ -42,7 +42,7 @@ Operator = Annotated[object, Depends(require_operator)]
 async def capabilities(user: CurrentUser, request: Request):
     return {
         "operator": is_operator(user),
-        "voice_name": get_settings().meeting_voice_name,
+        "voice_name": constants.MEETING_VOICE_NAME,
         "manual_join_ready": request.app.state.meeting_voice.ready,
     }
 

@@ -1,13 +1,14 @@
+
 from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 
 from app.business.bots import runtime_bot
-from app.core.security import opaque_token, token_digest
+from app.constants import constants
 from app.db.models import ApiKey, Bot, VoiceGrant, utcnow
-from app.env import get_settings
-from app.schemas.api import VoiceGrantOut
+from app.types import VoiceGrantOut
+from app.utils.security import opaque_token, token_digest
 
 
 async def create_grant(db, key, bot_id):
@@ -24,7 +25,7 @@ async def create_grant(db, key, bot_id):
         bot_id=bot.id,
         token_hash=token_digest(raw),
         offer_expires_at=now + timedelta(minutes=5),
-        expires_at=now + timedelta(seconds=300 + get_settings().voice_session_seconds),
+        expires_at=now + timedelta(seconds=300 + constants.VOICE_SESSION_SECONDS),
     )
     db.add(grant)
     await db.commit()

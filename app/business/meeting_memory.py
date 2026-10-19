@@ -1,14 +1,12 @@
 """One rolling string per workspace, with deterministic fourteen-day retention."""
 
-import re
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
 
+from app.constants.constants import HEADER
 from app.db.models import MeetingCapture, MeetingMemory, Organization, utcnow
 from app.db.session import SessionFactory
-
-HEADER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def prune(context, today=None):

@@ -8,6 +8,8 @@ from uuid import UUID
 
 from fastapi import HTTPException
 
+from app.constants import constants
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +33,7 @@ class VoiceSessions:
     async def offer(self, bot, user_id, offer):
         if not self.settings.sarvam_api_key.get_secret_value():
             raise HTTPException(503, "Voice is unavailable: SARVAM_API_KEY is not configured")
-        if self.closing or len(self.sessions) + self.pending >= self.settings.max_voice_sessions:
+        if self.closing or len(self.sessions) + self.pending >= constants.MAX_VOICE_SESSIONS:
             raise HTTPException(503, "Voice session capacity reached")
         # Reserve before the first await, so simultaneous offers cannot exceed capacity.
         self.pending += 1
@@ -80,7 +82,7 @@ class VoiceSessions:
 
     async def _run(self, session):
         try:
-            async with asyncio.timeout(self.settings.voice_session_seconds):
+            async with asyncio.timeout(constants.VOICE_SESSION_SECONDS):
                 await session.runner.run()
         except TimeoutError:
             logger.info("Voice session reached its time limit")

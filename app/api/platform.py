@@ -4,7 +4,7 @@ from fastapi import APIRouter, Response
 
 from app.api.dependencies import DB, CurrentUser
 from app.business import api_keys, bots
-from app.schemas.api import ApiKeyCreate, ApiKeyCreated, ApiKeyOut, TemplateOut
+from app.types import ApiKeyCreate, ApiKeyCreated, ApiKeyOut, TemplateOut
 
 router = APIRouter(tags=["platform"])
 

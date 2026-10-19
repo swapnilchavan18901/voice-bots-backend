@@ -6,6 +6,7 @@ from uuid import UUID
 import jwt
 from pwdlib import PasswordHash
 
+from app.constants import constants
 from app.env import get_settings
 
 password_hasher = PasswordHash.recommended()
@@ -27,7 +28,7 @@ def access_token(user_id: UUID) -> str:
         {
             "sub": str(user_id),
             "iat": now,
-            "exp": now + timedelta(minutes=settings.access_token_minutes),
+            "exp": now + timedelta(minutes=constants.ACCESS_TOKEN_MINUTES),
             "type": "access",
         },
         settings.jwt_secret.get_secret_value(),

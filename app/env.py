@@ -19,31 +19,16 @@ class Settings(BaseSettings):
     )
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/voice_bots"
     jwt_secret: SecretStr = Field(min_length=32)
-    access_token_minutes: int = Field(default=60, ge=1, le=1440)
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     sarvam_api_key: SecretStr = SecretStr("")
-    sarvam_llm_model: str = "sarvam-105b"
-    sarvam_stt_model: str = "saaras:v4"
-    sarvam_tts_model: str = "bulbul:v3"
-    sarvam_voice: str = "shubh"
     attendee_api_key: SecretStr = SecretStr("")
-    attendee_api_url: str = "https://app.attendee.dev"
     meeting_public_backend_url: str = ""
-    meeting_voice_name: str = Field(default="Sia", min_length=1, max_length=60)
-    meeting_voice_language: str = "en-IN"
-    meeting_filler_delay_ms: int = Field(default=700, ge=0, le=5000)
-    meeting_voice_seconds: int = Field(default=14400, ge=60, le=28800)
-    meeting_empty_leave_seconds: int = Field(default=30, ge=1, le=600)
-    meeting_voice_max_participants: int = Field(default=30, ge=1, le=100)
     meeting_operator_user_ids: list[UUID] = []
     google_client_id: str = ""
     google_client_secret: SecretStr = SecretStr("")
     meeting_bot_email: str = ""
     meeting_token_key: SecretStr = SecretStr("")
-    meeting_sync_days: int = Field(default=30, ge=1, le=90)
     ice_servers: list[dict] = []
-    max_voice_sessions: int = Field(default=20, ge=1)
-    voice_session_seconds: int = Field(default=1800, ge=30)
 
     @field_validator("database_url")
     @classmethod
@@ -58,15 +43,13 @@ class Settings(BaseSettings):
             ) from None
         return value
 
-    @field_validator("attendee_api_url", "meeting_public_backend_url")
+    @field_validator("meeting_public_backend_url")
     @classmethod
     def valid_service_url(cls, value, info):
-        if not value and info.field_name == "meeting_public_backend_url":
+        if not value:
             return value
         url = urlsplit(value)
-        schemes = (
-            {"https"} if info.field_name == "meeting_public_backend_url" else {"http", "https"}
-        )
+        schemes = {"https"}
         if (
             url.scheme not in schemes
             or not url.hostname
@@ -83,20 +66,6 @@ class Settings(BaseSettings):
         except ValueError:
             raise ValueError("Invalid service URL port") from None
         return value
-
-    @field_validator(
-        "sarvam_llm_model",
-        "sarvam_stt_model",
-        "sarvam_tts_model",
-        "sarvam_voice",
-        "meeting_voice_name",
-        "meeting_voice_language",
-    )
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("Must not be blank")
-        return value.strip()
 
     @field_validator("jwt_secret")
     @classmethod

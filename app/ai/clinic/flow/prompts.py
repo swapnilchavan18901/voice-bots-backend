@@ -3,19 +3,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-LANGUAGE_NAMES = {
-    "en-IN": "English",
-    "hi-IN": "Hindi",
-    "mr-IN": "Marathi",
-    "bn-IN": "Bengali",
-    "gu-IN": "Gujarati",
-    "kn-IN": "Kannada",
-    "ml-IN": "Malayalam",
-    "od-IN": "Odia",
-    "pa-IN": "Punjabi",
-    "ta-IN": "Tamil",
-    "te-IN": "Telugu",
-}
+from app.constants.constants import LANGUAGE_NAMES
 
 
 def doctors_text(state):

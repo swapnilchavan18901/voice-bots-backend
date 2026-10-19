@@ -7,7 +7,7 @@ import asyncio
 
 import pytest
 
-from app.ai.common.text_normalizer import SpeechNormalizer, normalize_for_speech
+from app.utils.text_normalizer import SpeechNormalizer, normalize_for_speech
 
 # (input, expected spoken text)
 CASES = [

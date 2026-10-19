@@ -11,6 +11,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select, text
 
 from app.business.meeting_calendar import auto_assign_event
+from app.constants import constants
+from app.constants.constants import CALENDAR_SCOPE, EVENTS_URL, LOCK_ID, SCOPES, TOKEN_URL
 from app.db.models import (
     Meeting,
     MeetingCalendar,
@@ -18,12 +20,6 @@ from app.db.models import (
     MeetingGoogleConnection,
     utcnow,
 )
-
-CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly"
-SCOPES = f"openid email {CALENDAR_SCOPE}"
-TOKEN_URL = "https://oauth2.googleapis.com/token"
-EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{}/events"
-LOCK_ID = 741029183
 
 
 class CalendarError(Exception):
@@ -330,7 +326,7 @@ async def calendar_get(client, url, token, **kwargs):
 async def sync_calendar(db, client, calendar, token, settings, now):
     # A bounded snapshot expands recurring events, including new occurrences each day.
     # Never combine this moving window with Google's incremental syncToken.
-    start, end = now - timedelta(days=1), now + timedelta(days=settings.meeting_sync_days)
+    start, end = now - timedelta(days=1), now + timedelta(days=constants.MEETING_SYNC_DAYS)
     url = EVENTS_URL.format(quote(calendar.google_calendar_id, safe=""))
     params = {
         "singleEvents": "true",

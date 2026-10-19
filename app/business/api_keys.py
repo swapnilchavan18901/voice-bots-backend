@@ -3,10 +3,11 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.business.organizations import MANAGE_ROLES, require_membership
-from app.core.security import opaque_token, token_digest
+from app.business.organizations import require_membership
+from app.constants.constants import MANAGE_ROLES
 from app.db.models import ApiKey, utcnow
-from app.schemas.api import ApiKeyCreated, ApiKeyOut
+from app.types import ApiKeyCreated, ApiKeyOut
+from app.utils.security import opaque_token, token_digest
 
 
 async def create_key(db, org_id, user_id, data):

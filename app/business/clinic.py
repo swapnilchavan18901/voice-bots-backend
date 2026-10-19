@@ -8,9 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.business.clinic_context import background, details
+from app.constants.constants import TZ
 from app.db.models import Bot, BotTemplate, ClinicAppointment, ClinicDoctor, utcnow
-
-TZ = ZoneInfo("Asia/Kolkata")
 
 
 def now_local(profile=None):
