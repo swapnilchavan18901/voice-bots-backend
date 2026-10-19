@@ -27,7 +27,8 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 
 Use one ASGI process: it owns live voice sessions and runs the small background loops.
 The audio callback has a signed, expiring grant. Workspace routes require membership;
-calendar assignments and bot controls require operator access.
+calendar assignment requires a trusted organizer identity and current membership;
+bot controls require operator access.
 
 ## Calendar and joining
 

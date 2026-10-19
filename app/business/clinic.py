@@ -292,3 +292,22 @@ async def set_visit(db, bot_id, appointment_id, visited):
     appointment.visited = visited
     appointment.updated_at = utcnow()
     return await save(db, appointment)
+
+
+async def daily_register(db, bot_id, can_manage, day=None):
+    today = now_local(await profile_for(db, bot_id)).date()
+    day = day or today
+    patients = await daily_patients(db, bot_id, day)
+    return {
+        "day": day,
+        "today": today,
+        "patients": [
+            {
+                **patient,
+                "can_update_visit": (can_manage and patient["status"] == "booked" and day <= today),
+            }
+            for patient in patients
+        ],
+        "registered_count": sum(patient["status"] == "booked" for patient in patients),
+        "visited_count": sum(patient["visited"] for patient in patients),
+    }

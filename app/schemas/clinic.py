@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -43,3 +43,24 @@ class Reschedule(ChangeAppointment):
 
 class VisitUpdate(ClinicInput):
     visited: bool
+
+
+class PatientOut(BaseModel):
+    id: UUID
+    doctor_id: int
+    doctor_name: str
+    patient_name: str
+    patient_phone: str
+    start_time: datetime
+    reason: str | None
+    status: str
+    visited: bool
+    can_update_visit: bool
+
+
+class RegisterOut(BaseModel):
+    day: date
+    today: date
+    patients: list[PatientOut]
+    registered_count: int
+    visited_count: int

@@ -7,15 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from sqlalchemy import select
 
 from app.api.dependencies import DB, CurrentUser
-from app.business.meeting_calendar import assign_event
-from app.business.organizations import require_membership
+from app.business.meeting_calendar import assign_event, organizer_organizations
+from app.business.organizations import list_organizations, require_membership
 from app.db.models import (
     Meeting,
     MeetingCalendar,
     MeetingCalendarEvent,
     MeetingGoogleConnection,
     MeetingSeries,
-    Organization,
     utcnow,
 )
 from app.env import get_settings
@@ -49,10 +48,11 @@ async def capabilities(user: CurrentUser, request: Request):
 
 
 @router.get("/operator/meeting-calendar")
-async def connection_status(db: DB, operator: Operator):
+async def connection_status(db: DB, user: CurrentUser):
     connection = await db.scalar(select(MeetingGoogleConnection))
     calendars = (await db.scalars(select(MeetingCalendar))).all()
     return {
+        "identity_ready": bool(user.calendar_email),
         "status": connection.status if connection else "not_connected",
         "email": connection.email if connection else None,
         "calendars": [
@@ -63,18 +63,20 @@ async def connection_status(db: DB, operator: Operator):
 
 
 @router.get("/operator/meeting-organizations", response_model=list[OrgOut])
-async def assignment_organizations(db: DB, operator: Operator):
-    return (await db.scalars(select(Organization).order_by(Organization.name))).all()
+async def assignment_organizations(db: DB, user: CurrentUser):
+    return await list_organizations(db, user.id)
 
 
 @router.get("/operator/meeting-events", response_model=list[EventOut])
 async def inbox(
-    db: DB, operator: Operator, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)
+    db: DB, user: CurrentUser, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)
 ):
     return (
         await db.scalars(
             select(MeetingCalendarEvent)
             .where(
+                MeetingCalendarEvent.organizer_email.is_not(None),
+                MeetingCalendarEvent.organizer_email == user.calendar_email,
                 MeetingCalendarEvent.meeting_id.is_(None),
                 MeetingCalendarEvent.cancelled.is_(False),
                 MeetingCalendarEvent.ends_at > utcnow(),
@@ -87,15 +89,22 @@ async def inbox(
 
 
 @router.post("/operator/meeting-events/{event_id}/assign", response_model=MeetingOut)
-async def assign(event_id: UUID, data: AssignMeeting, db: DB, operator: Operator):
+async def assign(event_id: UUID, data: AssignMeeting, db: DB, user: CurrentUser):
     # Same lock as sync; prevent assignment from racing a cancellation or another assignment.
     await lock(db)
     event = await db.scalar(
-        select(MeetingCalendarEvent).where(MeetingCalendarEvent.id == event_id).with_for_update()
+        select(MeetingCalendarEvent)
+        .where(
+            MeetingCalendarEvent.id == event_id,
+            MeetingCalendarEvent.organizer_email.is_not(None),
+            MeetingCalendarEvent.organizer_email == user.calendar_email,
+        )
+        .with_for_update()
     )
     if not event:
         raise HTTPException(404, "Calendar event not found")
-    if not await db.get(Organization, data.organization_id):
+    organizations = await organizer_organizations(db, user.calendar_email)
+    if not any(org.id == data.organization_id for org in organizations):
         raise HTTPException(404, "Workspace not found")
     meeting = await assign_event(db, event, data.organization_id, data.agenda, data.auto_join)
     if data.assign_series and event.recurring_event_id:
@@ -105,11 +114,15 @@ async def assign(event_id: UUID, data: AssignMeeting, db: DB, operator: Operator
                 MeetingSeries.provider_series_id == event.recurring_event_id,
             )
         )
-        if series and series.organization_id != data.organization_id:
+        if series and (
+            series.organization_id != data.organization_id
+            or series.organizer_email not in (None, event.organizer_email)
+        ):
             raise HTTPException(409, "This series belongs to another workspace")
         if not series:
             db.add(
                 MeetingSeries(
+                    organizer_email=event.organizer_email,
                     calendar_id=event.calendar_id,
                     provider_series_id=event.recurring_event_id,
                     organization_id=data.organization_id,
@@ -117,11 +130,14 @@ async def assign(event_id: UUID, data: AssignMeeting, db: DB, operator: Operator
                     auto_join=data.auto_join,
                 )
             )
+        else:
+            series.organizer_email = event.organizer_email
         occurrences = (
             await db.scalars(
                 select(MeetingCalendarEvent).where(
                     MeetingCalendarEvent.calendar_id == event.calendar_id,
                     MeetingCalendarEvent.recurring_event_id == event.recurring_event_id,
+                    MeetingCalendarEvent.organizer_email == event.organizer_email,
                     MeetingCalendarEvent.cancelled.is_(False),
                     MeetingCalendarEvent.ends_at > utcnow(),
                 )

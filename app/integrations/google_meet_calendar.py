@@ -10,13 +10,12 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select, text
 
-from app.business.meeting_calendar import assign_event
+from app.business.meeting_calendar import auto_assign_event
 from app.db.models import (
     Meeting,
     MeetingCalendar,
     MeetingCalendarEvent,
     MeetingGoogleConnection,
-    MeetingSeries,
     utcnow,
 )
 
@@ -282,6 +281,9 @@ async def apply_event(db, calendar_id, data):
         db.add(event)
     event.cancelled = data.get("status") == "cancelled"
     if not event.cancelled:
+        event.organizer_email = (
+            data.get("organizer", {}).get("email") or ""
+        ).strip().lower() or None
         event.ical_uid = data.get("iCalUID")
         event.recurring_event_id = data.get("recurringEventId")
         event.original_starts_at = parse_instant(data.get("originalStartTime", {}).get("dateTime"))
@@ -307,25 +309,8 @@ async def apply_event(db, calendar_id, data):
             else:
                 meeting.status = "cancelled"
             meeting.updated_at = utcnow()
-    if (
-        not event.meeting_id
-        and event.recurring_event_id
-        and not event.cancelled
-        and event.meet_url
-        and event.starts_at
-        and event.ends_at
-        and event.original_starts_at
-        and event.ends_at > event.starts_at
-        and event.ends_at > utcnow()
-    ):
-        series = await db.scalar(
-            select(MeetingSeries).where(
-                MeetingSeries.calendar_id == calendar_id,
-                MeetingSeries.provider_series_id == event.recurring_event_id,
-            )
-        )
-        if series:
-            await assign_event(db, event, series.organization_id, series.agenda, series.auto_join)
+    await db.flush()
+    await auto_assign_event(db, event)
     return event
 
 

@@ -139,3 +139,19 @@ class VoiceGrantOut(BaseModel):
     offer_expires_at: datetime
     expires_at: datetime
     bot_id: UUID
+
+
+class FeatureOut(BaseModel):
+    bots: list[BotOut]
+    templates: list[TemplateOut]
+
+
+class WorkspaceOut(BaseModel):
+    organization: OrgOut
+    role: Literal["owner", "admin", "member"]
+    can_manage: bool
+    can_invite_admins: bool
+    bots: list[BotOut]
+    templates: list[TemplateOut]
+    features: dict[Literal["clinic", "conversation"], FeatureOut]
+    members: list[MemberOut]

@@ -33,6 +33,8 @@ class IdentityMixin:
 class User(IdentityMixin, Base):
     __tablename__ = "users"
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    # Set only by deployment tooling after independent verification of calendar ownership.
+    calendar_email: Mapped[str | None] = mapped_column(String(320), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(100))
 
@@ -219,7 +221,7 @@ class Meeting(IdentityMixin, Base):
 
 
 class MeetingCalendarEvent(IdentityMixin, Base):
-    """Operator-only discovery inbox. No bot joins until an event is assigned a meeting."""
+    """Private organizer discovery inbox. Assignment grants workspace meeting visibility."""
 
     __tablename__ = "meeting_calendar_events"
     __table_args__ = (
@@ -229,6 +231,7 @@ class MeetingCalendarEvent(IdentityMixin, Base):
         ForeignKey("meeting_calendars.id", ondelete="CASCADE")
     )
     provider_event_id: Mapped[str] = mapped_column(String(1024))
+    organizer_email: Mapped[str | None] = mapped_column(String(320), index=True)
     meeting_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("meetings.id", ondelete="SET NULL"), index=True
     )
@@ -289,6 +292,7 @@ class MeetingSeries(IdentityMixin, Base):
     calendar_id: Mapped[UUID] = mapped_column(
         ForeignKey("meeting_calendars.id", ondelete="CASCADE")
     )
+    organizer_email: Mapped[str | None] = mapped_column(String(320))
     provider_series_id: Mapped[str] = mapped_column(String(1024))
     organization_id: Mapped[UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE")

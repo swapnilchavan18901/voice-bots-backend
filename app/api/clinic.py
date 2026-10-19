@@ -7,8 +7,16 @@ from sqlalchemy import select
 from app.api.dependencies import DB, CurrentUser
 from app.business import bots, clinic
 from app.business.clinic_context import sync_doctors
+from app.business.organizations import MANAGE_ROLES, require_membership
 from app.db.models import Bot
-from app.schemas.clinic import Booking, Caller, ChangeAppointment, Reschedule, VisitUpdate
+from app.schemas.clinic import (
+    Booking,
+    Caller,
+    ChangeAppointment,
+    RegisterOut,
+    Reschedule,
+    VisitUpdate,
+)
 
 router = APIRouter(prefix="/organizations/{org_id}/bots/{bot_id}/clinic", tags=["clinic"])
 
@@ -79,3 +87,17 @@ async def visit(
     await bots.get_bot(db, org_id, bot_id, user.id, write=True)
     await clinic.require_clinic(db, bot_id)
     return await clinic.set_visit(db, bot_id, appointment_id, data.visited)
+
+
+@router.get("/patients", response_model=RegisterOut)
+async def patient_register(
+    org_id: UUID,
+    bot_id: UUID,
+    db: DB,
+    user: CurrentUser,
+    day: date | None = None,
+):
+    await bots.get_bot(db, org_id, bot_id, user.id)
+    await clinic.require_clinic(db, bot_id)
+    membership = await require_membership(db, org_id, user.id)
+    return await clinic.daily_register(db, bot_id, membership.role in MANAGE_ROLES, day)

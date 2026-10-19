@@ -8,6 +8,8 @@ from app.core.security import opaque_token, token_digest
 from app.db.models import Invitation, Membership, Organization, User, utcnow
 from app.schemas.api import InviteOut
 
+MANAGE_ROLES = frozenset({"owner", "admin"})
+
 
 async def require_membership(db, org_id, user_id, roles=None):
     member = await db.scalar(
@@ -48,7 +50,7 @@ async def list_members(db, org_id, user_id):
 
 
 async def invite(db, org_id, user_id, data):
-    member = await require_membership(db, org_id, user_id, {"owner", "admin"})
+    member = await require_membership(db, org_id, user_id, MANAGE_ROLES)
     if data.role == "admin" and member.role != "owner":
         raise HTTPException(403, "Only owners can invite admins")
     existing = await db.scalar(

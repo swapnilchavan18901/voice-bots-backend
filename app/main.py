@@ -30,7 +30,7 @@ app.add_middleware(
     DashboardCORSMiddleware,
     allow_origins=get_settings().cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(health.router)

@@ -1,4 +1,4 @@
-"""Operator commands: python -m app.core.meeting_google {connect,sync,status,keygen}."""
+"""Operator commands for Google Calendar connection, sync, and trusted account linking."""
 
 import argparse
 import asyncio
@@ -8,12 +8,14 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
+from uuid import UUID
 
 from cryptography.fernet import Fernet
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.clients import create_google_client
-from app.db.models import MeetingGoogleConnection
+from app.db.models import MeetingGoogleConnection, User
 from app.db.session import SessionFactory, engine
 from app.env import get_settings
 from app.integrations.google_meet_calendar import CalendarError, connect, oauth_request, sync
@@ -95,16 +97,55 @@ async def run(command, no_browser=False):
         await engine.dispose()
 
 
+async def link_organizer(user_id, email=None):
+    """Trusted deployment action; never callable by public registration or workspace admins."""
+    try:
+        async with SessionFactory() as db:
+            user = await db.get(User, user_id)
+            if not user:
+                raise CalendarError("Dashboard user not found.")
+            if email and user.email.strip().lower() != email.strip().lower():
+                raise CalendarError("Calendar email must match the verified dashboard account.")
+            user.calendar_email = email.strip().lower() if email else None
+            try:
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+                raise CalendarError(
+                    "That calendar email is already linked to another account."
+                ) from None
+            print("Calendar identity linked." if email else "Calendar identity unlinked.")
+    finally:
+        await engine.dispose()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["connect", "sync", "status", "keygen"])
+    parser.add_argument(
+        "command",
+        choices=["connect", "sync", "status", "keygen", "link-organizer", "unlink-organizer"],
+    )
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--user-id", type=UUID)
+    parser.add_argument("--email")
     args = parser.parse_args()
     if args.command == "keygen":
         print(Fernet.generate_key().decode())
         return
     try:
-        asyncio.run(run(args.command, args.no_browser))
+        if args.command in {"link-organizer", "unlink-organizer"}:
+            if not args.user_id or (args.command == "link-organizer" and not args.email):
+                parser.error(
+                    "link-organizer requires --user-id and --email; "
+                    "unlink-organizer requires --user-id"
+                )
+            asyncio.run(
+                link_organizer(
+                    args.user_id, args.email if args.command == "link-organizer" else None
+                )
+            )
+        else:
+            asyncio.run(run(args.command, args.no_browser))
     except CalendarError as exc:
         parser.exit(1, str(exc) + "\n")
 

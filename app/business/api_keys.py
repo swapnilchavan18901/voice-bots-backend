@@ -3,14 +3,14 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.business.organizations import require_membership
+from app.business.organizations import MANAGE_ROLES, require_membership
 from app.core.security import opaque_token, token_digest
 from app.db.models import ApiKey, utcnow
 from app.schemas.api import ApiKeyCreated, ApiKeyOut
 
 
 async def create_key(db, org_id, user_id, data):
-    await require_membership(db, org_id, user_id, {"owner", "admin"})
+    await require_membership(db, org_id, user_id, MANAGE_ROLES)
     raw = "vb_" + opaque_token()
     key = ApiKey(
         organization_id=org_id,
@@ -26,12 +26,12 @@ async def create_key(db, org_id, user_id, data):
 
 
 async def list_keys(db, org_id, user_id):
-    await require_membership(db, org_id, user_id, {"owner", "admin"})
+    await require_membership(db, org_id, user_id, MANAGE_ROLES)
     return (await db.scalars(select(ApiKey).where(ApiKey.organization_id == org_id))).all()
 
 
 async def revoke_key(db, org_id, user_id, key_id):
-    await require_membership(db, org_id, user_id, {"owner", "admin"})
+    await require_membership(db, org_id, user_id, MANAGE_ROLES)
     key = await db.scalar(
         select(ApiKey).where(ApiKey.id == key_id, ApiKey.organization_id == org_id)
     )

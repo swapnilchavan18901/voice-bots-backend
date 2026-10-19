@@ -81,7 +81,7 @@ uv run python -m app.core.meeting_google sync
 - Fetches a bounded full snapshot from yesterday through `MEETING_SYNC_DAYS` ahead,
   expanding recurring instances and traversing all pages. This moving horizon deliberately
   does not use incremental sync tokens (Google prohibits mixing those with time bounds).
-- Stores event IDs, schedules, recurrence IDs, and Meet links in the operator-only inbox.
+- Stores event IDs, schedules, recurrence IDs, and Meet links in the organizer-private inbox.
   Re-running sync updates the same records. All-day and non-Meet events remain ineligible
   for joining. Read-only sync does not accept invitations.
 - For previously seen timed events missing from the window, reads the individual event
@@ -106,25 +106,40 @@ auto-join, voice interaction and rolling workspace memory.
 
 ## Dashboard access and assignment
 
-The frontend now has `/meetings` for workspace members and `/calendar-inbox` for the
-platform operator. Set `MEETING_OPERATOR_USER_IDS` to a JSON list of existing dashboard
-user UUIDs and restart the backend. For example:
+The frontend has `/meetings` for workspace members and `/calendar-inbox` for each
+meeting organizer. Apply migration `0010` before running this version.
 
-```dotenv
-MEETING_OPERATOR_USER_IDS=["<existing-dashboard-user-uuid>"]
+Google's event `organizer.email` identifies whose inbox an event belongs to. Signup
+emails are not proof of ownership. After independently verifying both the person's
+calendar email and dashboard account, a deployment operator links that identity:
+
+```sh
+uv run python -m app.core.meeting_google link-organizer --user-id <dashboard-user-uuid> --email <verified-email>
 ```
 
-Keep this setting in the backend environment only. An organization owner/admin does
-not automatically receive operator access. Email addresses are not used as an automatic
-authorization rule because dashboard registration does not verify email ownership.
-The user's `/api/v1/auth/me` response contains their UUID after login.
+The email must match the dashboard account. This action is available only through
+trusted deployment tooling; users and workspace owners cannot link or claim identities
+through the web API. To revoke a link:
 
-The inbox exposes only calendar status and upcoming, timed, unassigned event metadata.
-The operator selects a workspace explicitly and can add an agenda. Assignment is
-idempotent, serialized with calendar sync, and refuses to move an assigned event to
-another workspace. Repeated copies of a meeting occurrence cannot be assigned to
-different workspaces. Assignment may enable auto-join and routing future series occurrences.
+```sh
+uv run python -m app.core.meeting_google unlink-organizer --user-id <dashboard-user-uuid>
+```
 
-Workspace members may view their workspace's meeting schedules, agendas and shared
-fourteen-day memory. The dashboard shows live connection status and operator join/stop
-controls. Refresh view reloads stored data; calendar sync runs every minute independently.
+On the next calendar sync, a linked organizer with exactly one current membership
+gets automatic assignment to that workspace. With multiple memberships, only that
+person sees their pending events and chooses from their own workspaces. Their other
+workspaces and pending choices are never exposed to coworkers, workspace owners, or
+platform operators through the inbox API. Missing, unknown, or unlinked organizer
+emails stay private and unassigned. Legacy rows acquire organizer metadata on the
+next successful sync; legacy series preferences require explicit organizer confirmation.
+
+Assignments recheck current membership on submission. Repeated copies of an occurrence
+cannot be assigned to different workspaces. Choosing a series stores a preference for
+that organizer only, and future sync rechecks membership before using it. Once assigned,
+the meeting's title, schedule, link, and agenda become visible to the selected workspace's
+members. Assignment preferences and the organizer's other memberships remain private.
+
+Manual bot join/stop and scheduling controls still require `MEETING_OPERATOR_USER_IDS`,
+a JSON list of trusted dashboard user UUIDs in the backend environment. Organization
+owners/admins do not automatically receive those bot-control permissions. Calendar
+sync runs every minute; Refresh view only reloads the saved inbox.

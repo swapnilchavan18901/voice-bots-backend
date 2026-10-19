@@ -422,3 +422,61 @@ async def test_daily_register_visit_persistence_and_isolation(client, monkeypatc
         saved.status = "cancelled"
         await db.commit()
     assert (await c.patch(endpoint, headers=headers, json={"visited": True})).status_code == 409
+
+
+async def test_patient_register_counts_dates_and_permissions_are_server_prepared(
+    client, monkeypatch
+):
+    from datetime import datetime
+
+    from sqlalchemy import select
+    from test_platform import account
+
+    from app.db.models import Membership, User
+
+    c, sessions, headers, org, bot, base, day = await prepare(client)
+    doctor_id = (await c.get(base + "/info", headers=headers)).json()["doctors"][0]["id"]
+    appointment = (
+        await c.post(
+            base + "/appointments",
+            headers=headers,
+            json={
+                "doctor_id": doctor_id,
+                "patient_name": "Registered",
+                "patient_phone": "9876543210",
+                "start_time": clinic.slots(day, PROFILE)[0].isoformat(),
+            },
+        )
+    ).json()
+    endpoint = base + "/patients"
+    result = (await c.get(endpoint, headers=headers, params={"day": str(day)})).json()
+    assert (
+        result["day"] == str(day)
+        and result["registered_count"] == 1
+        and result["visited_count"] == 0
+    )
+    assert result["patients"][0]["can_update_visit"] is False  # future day
+    monkeypatch.setattr(
+        clinic, "now_local", lambda profile=None: datetime.combine(day, datetime.min.time())
+    )
+    today = (await c.get(endpoint, headers=headers)).json()
+    assert today["day"] == str(day) and today["patients"][0]["can_update_visit"] is True
+    await c.patch(
+        base + f"/appointments/{appointment['id']}/visit", headers=headers, json={"visited": True}
+    )
+    assert (await c.get(endpoint, headers=headers)).json()["visited_count"] == 1
+    member, _ = await account(c, "member@example.com")
+    async with sessions() as db:
+        user = await db.scalar(select(User).where(User.email == "member@example.com"))
+        db.add(Membership(organization_id=UUID(org), user_id=user.id, role="member"))
+        await db.commit()
+    readonly = (await c.get(endpoint, headers=member)).json()
+    assert readonly["registered_count"] == 1
+    assert readonly["patients"][0]["can_update_visit"] is False
+    assert (
+        await c.patch(
+            base + f"/appointments/{appointment['id']}/visit",
+            headers=member,
+            json={"visited": False},
+        )
+    ).status_code == 403

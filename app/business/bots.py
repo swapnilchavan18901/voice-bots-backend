@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.business.organizations import require_membership
+from app.business.organizations import MANAGE_ROLES, require_membership
 from app.db.models import Bot, BotTemplate
 
 
@@ -11,7 +11,7 @@ async def list_bots(db, org_id, user_id):
 
 
 async def create_bot(db, org_id, user_id, data):
-    await require_membership(db, org_id, user_id, {"owner", "admin"})
+    await require_membership(db, org_id, user_id, MANAGE_ROLES)
     template = await active_template(db, data.template_id)
     bot = Bot(organization_id=org_id, **data.model_dump())
     db.add(bot)
@@ -25,7 +25,7 @@ async def create_bot(db, org_id, user_id, data):
 
 
 async def get_bot(db, org_id, bot_id, user_id, write=False):
-    await require_membership(db, org_id, user_id, {"owner", "admin"} if write else None)
+    await require_membership(db, org_id, user_id, MANAGE_ROLES if write else None)
     query = select(Bot).where(Bot.id == bot_id, Bot.organization_id == org_id)
     if write:
         query = query.with_for_update()
