@@ -341,11 +341,13 @@ Keep `bot_templates` and `alembic_version` out of a reset intended only for cust
 
 ## Meeting facilitator: shared Google calendar
 
-The meeting feature starts with one operator-owned Google account and read-only calendar
-sync. See [operator setup](docs/meeting-google-setup.md) for OAuth credentials, encryption,
-connection commands, and cron configuration, and [database design](docs/meeting-facilitator-database.md)
-for organization ownership and the remaining bot/Q&A stages. No customer OAuth, calendar
-invitations, or meeting-joining worker is exposed by this step.
+The meeting feature uses one operator-owned Google account for read-only calendar
+sync. Operators assign events to workspaces and control joining through Attendee.
+The backend runs calendar sync, automatic joining, provider status refresh, and rolling
+workspace memory updates. See [operator setup](docs/meeting-google-setup.md) for OAuth
+credentials and connection commands, [meeting voice](docs/meeting-attendee-voice.md)
+for joining and spoken questions, and [database design](docs/meeting-facilitator-database.md)
+for workspace ownership and retention.
 
 
 ## Pipeline and client organization

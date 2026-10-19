@@ -1,4 +1,4 @@
-"""Calendar metadata only. Global inbox is restricted to configured operator user IDs."""
+"""Calendar assignment, Attendee voice control, and workspace meeting memory."""
 
 from typing import Annotated
 from uuid import UUID
@@ -43,8 +43,6 @@ Operator = Annotated[object, Depends(require_operator)]
 async def capabilities(user: CurrentUser, request: Request):
     return {
         "operator": is_operator(user),
-        "facilitator_ready": request.app.state.meeting_voice.ready,
-        "qa_ready": False,
         "voice_name": get_settings().meeting_voice_name,
         "manual_join_ready": request.app.state.meeting_voice.ready,
     }

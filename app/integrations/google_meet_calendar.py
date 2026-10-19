@@ -281,7 +281,6 @@ async def apply_event(db, calendar_id, data):
         event = MeetingCalendarEvent(calendar_id=calendar_id, provider_event_id=data["id"])
         db.add(event)
     event.cancelled = data.get("status") == "cancelled"
-    event.provider_updated_at = parse_instant(data.get("updated"))
     if not event.cancelled:
         event.ical_uid = data.get("iCalUID")
         event.recurring_event_id = data.get("recurringEventId")
@@ -397,7 +396,6 @@ async def sync_calendar(db, client, calendar, token, settings, now):
         )
         await apply_event(db, calendar.id, item)
     calendar.last_synced_at = now
-    calendar.sync_token = None
     return count
 
 

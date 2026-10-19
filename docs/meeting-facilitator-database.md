@@ -18,5 +18,8 @@ unused meeting_jobs. Recent existing notes are preserved in the context. Operati
 fields remain separate from the context string. There are no separate task/event-memory
 records. Temporary transcript entries are removed atomically after successful merging.
 
+Migration 0008 removes the unused incremental sync token and provider update timestamp.
+Calendar sync uses bounded full snapshots and reconciles changes directly.
+
 See [the current lifecycle documentation](meeting-attendee-voice.md) for scheduling,
 retention, concurrency and deployment behavior.

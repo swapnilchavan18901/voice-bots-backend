@@ -186,7 +186,6 @@ class MeetingCalendar(IdentityMixin, Base):
         ForeignKey("meeting_google_connection.id", ondelete="CASCADE")
     )
     google_calendar_id: Mapped[str] = mapped_column(String(320))
-    sync_token: Mapped[str | None] = mapped_column(Text)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -239,7 +238,6 @@ class MeetingCalendarEvent(IdentityMixin, Base):
     meet_url: Mapped[str | None] = mapped_column(Text)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    provider_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Cancelled event tombstones may contain only the provider ID.
     cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
 
