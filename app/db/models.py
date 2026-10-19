@@ -136,6 +136,7 @@ class ClinicAppointment(IdentityMixin, Base):
     doctor_id: Mapped[int] = mapped_column(ForeignKey("clinic_doctors.id"))
     patient_name: Mapped[str] = mapped_column(String(120))
     patient_phone: Mapped[str] = mapped_column(String(20))
+    visited: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     start_time: Mapped[datetime] = mapped_column(DateTime)  # fixed Asia/Kolkata local time
     reason: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="booked")

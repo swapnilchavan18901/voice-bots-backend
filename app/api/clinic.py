@@ -8,7 +8,7 @@ from app.api.dependencies import DB, CurrentUser
 from app.business import bots, clinic
 from app.business.clinic_context import sync_doctors
 from app.db.models import Bot
-from app.schemas.clinic import Booking, Caller, ChangeAppointment, Reschedule
+from app.schemas.clinic import Booking, Caller, ChangeAppointment, Reschedule, VisitUpdate
 
 router = APIRouter(prefix="/organizations/{org_id}/bots/{bot_id}/clinic", tags=["clinic"])
 
@@ -58,3 +58,24 @@ async def reschedule(org_id: UUID, bot_id: UUID, data: Reschedule, db: DB, user:
 async def cancel(org_id: UUID, bot_id: UUID, data: ChangeAppointment, db: DB, user: CurrentUser):
     await authorize(db, org_id, bot_id, user, write=True)
     return await clinic.change(db, bot_id, data, cancel=True)
+
+
+@router.get("/appointments")
+async def daily_patients(org_id: UUID, bot_id: UUID, day: date, db: DB, user: CurrentUser):
+    await bots.get_bot(db, org_id, bot_id, user.id)
+    await clinic.require_clinic(db, bot_id)
+    return await clinic.daily_patients(db, bot_id, day)
+
+
+@router.patch("/appointments/{appointment_id}/visit")
+async def visit(
+    org_id: UUID,
+    bot_id: UUID,
+    appointment_id: UUID,
+    data: VisitUpdate,
+    db: DB,
+    user: CurrentUser,
+):
+    await bots.get_bot(db, org_id, bot_id, user.id, write=True)
+    await clinic.require_clinic(db, bot_id)
+    return await clinic.set_visit(db, bot_id, appointment_id, data.visited)

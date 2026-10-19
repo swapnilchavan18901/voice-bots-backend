@@ -375,3 +375,18 @@ Doctor database rows are derived references for appointment history, not a secon
 editable clinic profile. Removing a doctor from context removes them from available
 booking choices. The backend does not require a separate clinic-details form.
 # voice-bots-backend
+
+### Daily clinic patients
+
+The Clinic Bot section includes setup, a dedicated voice test ground, and a daily
+patient register. The register uses the appointment date in the clinic's timezone
+and reads confirmed bookings already saved by HTTP or voice. Cancelled bookings
+remain visible. Owners and admins can mark or undo a doctor visit; members can
+view the list. A visit mark does not release the booked slot.
+
+Apply migration `0009` before using this version: `uv run alembic upgrade head`.
+Existing appointments start with `visited = false`.
+
+- `GET /api/v1/organizations/{org_id}/bots/{bot_id}/clinic/appointments?day=YYYY-MM-DD`
+- `PATCH /api/v1/organizations/{org_id}/bots/{bot_id}/clinic/appointments/{appointment_id}/visit`
+  with `{ "visited": true }` (or `false` to undo).

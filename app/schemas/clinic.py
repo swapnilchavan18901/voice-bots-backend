@@ -39,3 +39,7 @@ class ChangeAppointment(Caller):
 class Reschedule(ChangeAppointment):
     new_start_time: datetime
     doctor_id: int | None = Field(default=None, gt=0)
+
+
+class VisitUpdate(ClinicInput):
+    visited: bool

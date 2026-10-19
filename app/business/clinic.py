@@ -154,6 +154,7 @@ def output(a):
             "start_time",
             "reason",
             "status",
+            "visited",
         )
     }
 
@@ -211,6 +212,8 @@ async def change(db, bot_id, data, cancel=False):
     )
     if appointment is None:
         raise HTTPException(404, "Appointment not found for this caller")
+    if appointment.visited:
+        raise HTTPException(409, "Remove the doctor visit mark before changing this appointment")
     if appointment.status != "booked" or appointment.start_time <= now_local(
         await profile_for(db, bot_id)
     ):
@@ -255,3 +258,37 @@ async def clinic_info(db, bot_id):
         "background": background(bot.company_context),
         "doctors": catalog,
     }
+
+
+async def daily_patients(db, bot_id, day):
+    rows = await db.execute(
+        select(ClinicAppointment, ClinicDoctor.name)
+        .join(ClinicDoctor, ClinicDoctor.id == ClinicAppointment.doctor_id)
+        .where(
+            ClinicAppointment.bot_id == bot_id,
+            ClinicAppointment.start_time >= datetime.combine(day, time.min),
+            ClinicAppointment.start_time < datetime.combine(day + timedelta(days=1), time.min),
+        )
+        .order_by(ClinicAppointment.start_time, ClinicAppointment.created_at)
+    )
+    return [{**output(a), "doctor_name": name} for a, name in rows.all()]
+
+
+async def set_visit(db, bot_id, appointment_id, visited):
+    appointment = await db.scalar(
+        select(ClinicAppointment)
+        .where(
+            ClinicAppointment.id == appointment_id,
+            ClinicAppointment.bot_id == bot_id,
+        )
+        .with_for_update()
+    )
+    if appointment is None:
+        raise HTTPException(404, "Appointment not found")
+    if appointment.status != "booked":
+        raise HTTPException(409, "Cancelled appointments cannot be marked as visited")
+    if visited and appointment.start_time.date() > now_local(await profile_for(db, bot_id)).date():
+        raise HTTPException(409, "A future appointment cannot be marked as visited yet")
+    appointment.visited = visited
+    appointment.updated_at = utcnow()
+    return await save(db, appointment)

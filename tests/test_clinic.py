@@ -333,3 +333,92 @@ async def test_markdown_published_slots_are_doctor_specific(client, monkeypatch)
     assert (
         details(wrapped).doctors[0].available_slots == details(context).doctors[0].available_slots
     )
+
+
+async def test_daily_register_visit_persistence_and_isolation(client, monkeypatch):
+    from datetime import datetime
+
+    from sqlalchemy import select
+    from test_platform import account
+
+    from app.db.models import ClinicAppointment, Membership, User
+
+    c, sessions, headers, org, bot, base, day = await prepare(client)
+    doctor_id = (await c.get(base + "/info", headers=headers)).json()["doctors"][0]["id"]
+    booked = await c.post(
+        base + "/appointments",
+        headers=headers,
+        json={
+            "doctor_id": doctor_id,
+            "patient_name": "Daily Patient",
+            "patient_phone": "9876543210",
+            "start_time": clinic.slots(day, PROFILE)[0].isoformat(),
+        },
+    )
+    assert booked.status_code == 201, booked.text
+    appointment_id = booked.json()["id"]
+    endpoint = base + f"/appointments/{appointment_id}/visit"
+    assert (await c.get(base + "/appointments", headers=headers)).status_code == 422
+    assert (
+        await c.get(
+            base + "/appointments", headers=headers, params={"day": str(day + timedelta(days=1))}
+        )
+    ).json() == []
+    rows = (await c.get(base + "/appointments", headers=headers, params={"day": str(day)})).json()
+    assert len(rows) == 1
+    assert rows[0]["doctor_name"] == "Dr. Customer"
+    assert rows[0]["visited"] is False
+    assert (await c.patch(endpoint, headers=headers, json={"visited": True})).status_code == 409
+    monkeypatch.setattr(
+        clinic, "now_local", lambda profile=None: datetime.combine(day, datetime.min.time())
+    )
+    result = await c.patch(endpoint, headers=headers, json={"visited": True})
+    assert result.status_code == 200, result.text
+    async with sessions() as db:
+        saved = await db.get(ClinicAppointment, UUID(appointment_id))
+        assert saved.visited is True and saved.status == "booked"
+    rows = (await c.get(base + "/appointments", headers=headers, params={"day": str(day)})).json()
+    assert rows[0]["visited"] is True
+    # A completed visit must not free an occupied booking slot.
+    availability = (
+        await c.get(base + "/availability", headers=headers, params={"day": str(day)})
+    ).json()
+    assert rows[0]["start_time"] not in availability["doctors"][0]["slots"]
+    assert (await c.patch(endpoint, headers=headers, json={"visited": False})).json()[
+        "visited"
+    ] is False
+    other = (
+        await c.post(
+            f"/api/v1/organizations/{org}/bots",
+            headers=headers,
+            json={
+                "name": "Other clinic",
+                "template_id": TEMPLATE,
+                "company_context": CONTEXT,
+            },
+        )
+    ).json()["id"]
+    other_base = base.replace(bot, other)
+    assert (
+        await c.get(other_base + "/appointments", headers=headers, params={"day": str(day)})
+    ).json() == []
+    assert (
+        await c.patch(endpoint.replace(bot, other), headers=headers, json={"visited": True})
+    ).status_code == 404
+    outsider, _ = await account(c, "outsider@example.com")
+    assert (
+        await c.get(base + "/appointments", headers=outsider, params={"day": str(day)})
+    ).status_code == 404
+    async with sessions() as db:
+        user = await db.scalar(select(User).where(User.email == "outsider@example.com"))
+        db.add(Membership(organization_id=UUID(org), user_id=user.id, role="member"))
+        await db.commit()
+    assert (
+        await c.get(base + "/appointments", headers=outsider, params={"day": str(day)})
+    ).status_code == 200
+    assert (await c.patch(endpoint, headers=outsider, json={"visited": True})).status_code == 403
+    async with sessions() as db:
+        saved = await db.get(ClinicAppointment, UUID(appointment_id))
+        saved.status = "cancelled"
+        await db.commit()
+    assert (await c.patch(endpoint, headers=headers, json={"visited": True})).status_code == 409

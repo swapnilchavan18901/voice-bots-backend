@@ -76,7 +76,7 @@ def test_head_upgrade_and_intentional_downgrade_guard(tmp_path):
     )
     assert upgrade.returncode == 0, upgrade.stderr
     with sqlite3.connect(database) as conn:
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0009",)
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         for table in Base.metadata.sorted_tables:
             columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table.name}")')}
