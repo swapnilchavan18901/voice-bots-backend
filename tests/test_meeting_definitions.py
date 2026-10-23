@@ -166,7 +166,7 @@ async def env(tmp_path, monkeypatch):
         jwt_secret="test-only-meeting-secret-123456789",
         sarvam_api_key="test",
         attendee_api_key="test",
-        meeting_public_backend_url="https://backend.example.com",
+        public_backend_url="https://backend.example.com",
     )
     service = MeetingVoiceService(settings)
     await service.attendee.close()

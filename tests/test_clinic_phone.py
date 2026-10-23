@@ -121,7 +121,7 @@ async def env(tmp_path):
         exotel_api_key="key",
         exotel_api_token="token",
         exotel_caller_id="08012345678",
-        clinic_public_backend_url="https://clinic.example.com",
+        public_backend_url="https://clinic.example.com",
         clinic_operator_user_ids=[owner.id],
     )
     provider = Provider()

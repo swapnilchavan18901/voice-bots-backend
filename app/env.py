@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     sarvam_api_key: SecretStr = SecretStr("")
     attendee_api_key: SecretStr = SecretStr("")
-    meeting_public_backend_url: str = ""
+    public_backend_url: str = Field(default="", max_length=200)
     meeting_operator_user_ids: list[UUID] = []
     google_client_id: str = ""
     google_client_secret: SecretStr = SecretStr("")
@@ -34,8 +34,6 @@ class Settings(BaseSettings):
     exotel_api_token: SecretStr = SecretStr("")
     exotel_api_host: str = "api.in.exotel.com"
     exotel_caller_id: str = ""
-    outreach_public_backend_url: str = Field(default="", max_length=200)
-    clinic_public_backend_url: str = Field(default="", max_length=200)
     clinic_operator_user_ids: list[UUID] = []
 
     @field_validator("database_url")
@@ -58,7 +56,7 @@ class Settings(BaseSettings):
             raise ValueError("Unsupported Exotel region host")
         return value
 
-    @field_validator("meeting_public_backend_url", "outreach_public_backend_url", "clinic_public_backend_url")
+    @field_validator("public_backend_url")
     @classmethod
     def valid_service_url(cls, value, info):
         if not value:

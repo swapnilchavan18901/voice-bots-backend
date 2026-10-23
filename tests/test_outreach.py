@@ -108,7 +108,7 @@ async def env(tmp_path):
         exotel_api_key="key",
         exotel_api_token="token",
         exotel_caller_id="08012345678",
-        outreach_public_backend_url="https://outreach.example.com",
+        public_backend_url="https://outreach.example.com",
         sarvam_api_key="test",
     )
     provider = FakeProvider()

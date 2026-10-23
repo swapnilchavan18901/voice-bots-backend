@@ -11,7 +11,7 @@ Staff requests still do not place a live transfer or deliver a callback.
 1. Run `uv sync`, then `uv run alembic upgrade head`.
 2. Configure the existing `SARVAM_API_KEY` and `EXOTEL_ACCOUNT_SID`,
    `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, and regional `EXOTEL_API_HOST`.
-3. Set `CLINIC_PUBLIC_BACKEND_URL` to the backend's public HTTPS origin. Its proxy
+3. Set `PUBLIC_BACKEND_URL` to the backend's public HTTPS origin. Its proxy
    must forward WebSocket upgrades. An HTTPS tunnel works for local development.
 4. Set `EXOTEL_CALLER_ID` to your ExoPhone for outbound calls. Inbound numbers are
    allocated separately per clinic. The same provider account/client and request

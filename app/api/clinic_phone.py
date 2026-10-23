@@ -13,6 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.api.dependencies import DB, CurrentUser
 from app.business import bots
 from app.business.clinic_phone import clinic_bot, network_phone
+from app.business.organizations import require_membership
 from app.clinic_phone_types import (
     PhoneCallOut,
     PhoneDial,
@@ -21,12 +22,35 @@ from app.clinic_phone_types import (
     PhoneRouteOut,
 )
 from app.constants import constants
+from app.constants.constants import MANAGE_ROLES
 from app.db.models import ClinicPhoneCall, ClinicPhoneRoute, utcnow
 
 router = APIRouter(
     prefix="/organizations/{org_id}/bots/{bot_id}/phone", tags=["Clinic phone"]
 )
 provider_router = APIRouter(prefix="/clinic-phone/exotel", tags=["Clinic Exotel"])
+
+
+@router.get("/capabilities")
+async def capabilities(
+    org_id: UUID, bot_id: UUID, db: DB, user: CurrentUser, request: Request
+):
+    await clinic_bot(db, org_id, bot_id, user.id)
+    member = await require_membership(db, org_id, user.id)
+    service = request.app.state.clinic_phone
+    manager = member.role in MANAGE_ROLES
+    try:
+        service.require_ready()
+        inbound_ready = True
+    except HTTPException:
+        inbound_ready = False
+    return {
+        "can_view_route": manager,
+        "can_manage_route": manager and user.id in service.settings.clinic_operator_user_ids,
+        "can_call": manager,
+        "inbound_ready": inbound_ready,
+        "outbound_ready": inbound_ready and bool(service.settings.exotel_caller_id),
+    }
 
 
 @router.get("/route", response_model=PhoneRouteOut)
@@ -42,7 +66,7 @@ async def get_route(
     result = PhoneRouteOut.model_validate(route)
     if (
         route.enabled
-        and request.app.state.clinic_phone.settings.clinic_public_backend_url
+        and request.app.state.clinic_phone.settings.public_backend_url
     ):
         result.inbound_stream_url = request.app.state.clinic_phone.inbound_url(route)
     return result

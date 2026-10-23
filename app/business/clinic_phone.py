@@ -54,7 +54,7 @@ class ClinicPhoneService:
     def require_ready(self):
         if not all(
             (
-                self.settings.clinic_public_backend_url,
+                self.settings.public_backend_url,
                 self.settings.exotel_account_sid,
                 self.settings.exotel_api_key.get_secret_value(),
                 self.settings.exotel_api_token.get_secret_value(),
@@ -62,7 +62,7 @@ class ClinicPhoneService:
             )
         ):
             raise HTTPException(
-                503, "Configure Exotel, Sarvam and CLINIC_PUBLIC_BACKEND_URL"
+                503, "Configure Exotel, Sarvam and PUBLIC_BACKEND_URL"
             )
 
     def token(self, identity, purpose):
@@ -79,7 +79,7 @@ class ClinicPhoneService:
             raise HTTPException(403, "Invalid clinic phone token")
 
     def url(self, path, identity, purpose, *, media=False):
-        base = self.settings.clinic_public_backend_url.rstrip("/")
+        base = self.settings.public_backend_url.rstrip("/")
         if media:
             base = base.replace("https://", "wss://", 1)
         return f"{base}/api/v1/clinic-phone/exotel/{path}?token={self.token(identity, purpose)}"

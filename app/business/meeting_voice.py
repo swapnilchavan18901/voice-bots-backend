@@ -56,7 +56,7 @@ class MeetingVoiceService:
 
     @property
     def ready(self):
-        url = urlparse(self.settings.meeting_public_backend_url)
+        url = urlparse(self.settings.public_backend_url)
         return bool(
             self.settings.attendee_api_key.get_secret_value()
             and self.settings.sarvam_api_key.get_secret_value()
@@ -129,7 +129,7 @@ class MeetingVoiceService:
             raise HTTPException(
                 503,
                 "Configure ATTENDEE_API_KEY, SARVAM_API_KEY "
-                "and MEETING_PUBLIC_BACKEND_URL (HTTPS).",
+                "and PUBLIC_BACKEND_URL (HTTPS).",
             )
         if self.closing:
             raise HTTPException(503, "The meeting voice service is shutting down.")
@@ -190,7 +190,7 @@ class MeetingVoiceService:
             self.settings.jwt_secret.get_secret_value(),
             algorithm="HS256",
         )
-        public_url = self.settings.meeting_public_backend_url.rstrip("/")
+        public_url = self.settings.public_backend_url.rstrip("/")
         audio_url = public_url.replace("https://", "wss://", 1)
         try:
             bot = await self.attendee.request(

@@ -32,13 +32,13 @@ class OutreachService:
                 self.settings.exotel_api_key.get_secret_value(),
                 self.settings.exotel_api_token.get_secret_value(),
                 self.settings.exotel_caller_id,
-                self.settings.outreach_public_backend_url,
+                self.settings.public_backend_url,
                 self.settings.sarvam_api_key.get_secret_value(),
             ]
         ):
             raise HTTPException(
                 503,
-                "Configure Exotel, Outreach public HTTPS URL and Sarvam before running",
+                "Configure Exotel, PUBLIC_BACKEND_URL (HTTPS) and Sarvam before running",
             )
 
     def token(self, call_id, purpose):
@@ -55,7 +55,7 @@ class OutreachService:
             raise HTTPException(403, "Invalid call token")
 
     def urls(self, call_id):
-        base = self.settings.outreach_public_backend_url.rstrip("/")
+        base = self.settings.public_backend_url.rstrip("/")
         path = f"/api/v1/outreach/exotel/{call_id}"
         return (
             base.replace("https://", "wss://", 1)

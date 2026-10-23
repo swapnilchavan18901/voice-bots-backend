@@ -18,7 +18,7 @@ Set these deployment values in `.env` (see `.env.example`):
 - `EXOTEL_ACCOUNT_SID`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`
 - `EXOTEL_CALLER_ID`: the account's ExoPhone / virtual number
 - `EXOTEL_API_HOST`: `api.in.exotel.com` (India) or `api.exotel.com` (Singapore)
-- `OUTREACH_PUBLIC_BACKEND_URL`: public HTTPS backend base URL, with WebSocket upgrades enabled
+- `PUBLIC_BACKEND_URL`: public HTTPS backend base URL, with WebSocket upgrades enabled
 
 The Exotel account needs Connect Voice AI / AgentStream access and outbound calling
 capacity for the selected concurrency. The backend uses the
