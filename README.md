@@ -174,7 +174,7 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ CALENDAR INGESTION                                           │
-│ Shared Google connection → eligible Meet occurrence          │
+│ Shared Google connection → reusable meeting definition          │
 └──────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -194,7 +194,7 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
                                           ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ ASSIGNED WORKSPACE MEETING                                   │
-│ Occurrence deduplication + organizer-bound series rules      │
+│ One definition + next occurrence + session history      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -202,8 +202,11 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 - The Google connection is shared and operator-managed; this is not a separate Google OAuth connection for every dashboard user.
 - A user with multiple organizations receives only their own membership choices. Their pending inbox and those choices are private to them, including from other workspace owners.
 - Once assigned, the meeting belongs to the selected workspace and becomes visible through that workspace's meeting access rules.
-- Recurring-series preferences are tied to the organizer and checked against current memberships. They can route subsequent occurrences to the chosen workspace.
-- Occurrence identity prevents the same meeting from being assigned again to a different workspace. Cancelled, expired, untimed, or non-Meet events are not eligible for assignment.
+- One `meetings` row represents a standalone event or an entire recurring series. Unassigned definitions appear only in the organizer's private inbox; assigning a recurring definition assigns the series.
+- Google resolves recurrence and exceptions inside a rolling 30-day window. Only the next unattempted occurrence is persisted on the definition; future occurrences do not become database rows.
+- Actual join attempts create `meeting_captures` rows with immutable occurrence timing, title, link, and agenda. Calendar advancement is independent of capture completion and memory generation.
+- A unique meeting/occurrence pair prevents duplicate join attempts. Cancelled, expired, untimed, or non-Meet occurrences are not eligible for assignment or joining.
+- See [recurring meeting storage, migration and APIs](docs/meeting-definitions.md) for the schema and upgrade procedure.
 
 ## 6. Meeting participation and spoken assistance
 
@@ -366,3 +369,17 @@ app/
 ```
 
 Change model names, speech defaults, filler timing, session limits, and calendar sync duration in the constants file. Environment configuration holds values that differ between deployments: credentials, database location, OAuth account identity, operator IDs, public callback origin, CORS origins, and ICE servers. Domain workflows retain their own orchestration; shared helpers are imported from `utils`.
+
+## Sia Outreach: outbound AI sales campaigns
+
+Organizations can create reusable sales agents with their own context, prepare campaigns
+from phone numbers or CSV, and explicitly start calls through Exotel. Execution supports
+one number at a time or batches of five concurrent calls, with independent campaigns
+running simultaneously. See [Outreach setup, API workflow and recovery](docs/outreach.md).
+
+## Clinic inbound and outbound phone calls
+
+Clinic agents support the existing browser WebRTC interface and Exotel phone
+calls using the same conversation flow and appointment tools. Inbound ExoPhone
+routing, authorized outbound calls, deduplication, status callbacks and recovery
+are described in [Clinic phone setup and APIs](docs/clinic-phone.md).

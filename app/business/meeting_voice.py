@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 from datetime import timedelta
+from types import SimpleNamespace
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from sqlalchemy import select
 
 from app.ai.meeting.pipeline import MeetingVoice
 from app.ai.meeting.speech import MeetingSpeech
+from app.business.meeting_calendar import aware
 from app.business.meeting_memory import MeetingMemoryService
 from app.clients import AttendeeClient
 from app.constants import constants
@@ -26,7 +28,9 @@ class AudioGrantLogFilter(logging.Filter):
 
     def filter(self, record):
         def clean(value):
-            if isinstance(value, str) and "/meeting-audio/" in value:
+            if isinstance(value, str) and any(path in value for path in (
+                "/meeting-audio/", "/clinic-phone/exotel/", "/outreach/exotel/",
+            )):
                 return re.sub(r"([?&]token=)[^\s\"']+", r"\1[redacted]", value)
             return value
 
@@ -64,10 +68,26 @@ class MeetingVoiceService:
             and not url.password
         )
 
-    def output(self, capture, meeting_id):
+    def output(self, capture, meeting):
         runtime = self.live.get(capture.id) if capture else None
+        due = (
+            meeting.next_starts_at
+            and meeting.next_ends_at
+            and aware(meeting.next_starts_at) <= utcnow() + timedelta(minutes=10)
+            and aware(meeting.next_ends_at) > utcnow()
+        )
+        active = capture and capture.status in {
+            "starting",
+            "unknown",
+            "joining",
+            "waiting",
+            "connected",
+            "stopping",
+        }
         return {
-            "meeting_id": meeting_id,
+            "meeting_id": meeting.id,
+            "capture_id": capture.id if capture else None,
+            "provider_occurrence_id": capture.provider_occurrence_id if capture else None,
             "status": capture.status if capture else "idle",
             "detail": capture.detail if capture else "The bot has not joined this meeting.",
             "updated_at": capture.updated_at if capture else None,
@@ -75,19 +95,34 @@ class MeetingVoiceService:
             "voice_error": runtime.error if runtime else None,
             "memory_status": capture.memory_status if capture else "pending",
             "memory_error": capture.memory_error if capture else None,
-            "can_join": not runtime
-            and (
-                not capture
-                or capture.provider_status in TERMINAL
-                or (capture.status == "failed" and not capture.provider_bot_id)
+            "can_join": bool(
+                due
+                and not active
+                and not runtime
+                and meeting.status != "cancelled"
+                and (not capture or capture.provider_occurrence_id != meeting.next_occurrence_id)
             ),
         }
 
     async def capture(self, db, meeting_id, lock=False):
+        # Active captures can belong to an earlier occurrence than the current next pointer.
         statement = select(MeetingCapture).where(MeetingCapture.meeting_id == meeting_id)
         if lock:
             statement = statement.with_for_update()
-        return await db.scalar(statement)
+        active = await db.scalar(
+            statement.where(
+                MeetingCapture.status.in_(
+                    {"starting", "unknown", "joining", "waiting", "connected", "stopping"}
+                )
+            )
+            .order_by(MeetingCapture.created_at.desc())
+            .limit(1)
+        )
+        if active:
+            return active
+        return await db.scalar(
+            statement.order_by(MeetingCapture.scheduled_starts_at.desc()).limit(1)
+        )
 
     async def start(self, db, meeting, scheduled=False):
         if not self.ready:
@@ -100,32 +135,50 @@ class MeetingVoiceService:
             raise HTTPException(503, "The meeting voice service is shutting down.")
         await db.execute(select(Meeting.id).where(Meeting.id == meeting.id).with_for_update())
         await db.refresh(meeting)
-        capture = await self.capture(db, meeting.id)
+        if not meeting.organization_id:
+            raise HTTPException(409, "Assign this meeting to a workspace before joining")
         if meeting.status == "cancelled":
             raise HTTPException(409, "Cancelled meetings cannot be joined")
-        if scheduled and (
-            capture
-            or not meeting.auto_join
-            or meeting.status != "scheduled"
-            or meeting.starts_at > utcnow()
-            or meeting.ends_at <= utcnow()
+        if (
+            not meeting.next_occurrence_id
+            or not meeting.next_meet_url
+            or not meeting.next_starts_at
+            or not meeting.next_ends_at
+            or aware(meeting.next_ends_at) <= utcnow()
+            or aware(meeting.next_starts_at) > utcnow() + timedelta(minutes=0 if scheduled else 10)
         ):
-            return self.output(capture, meeting.id)
-        if capture and capture.status == "failed" and not capture.provider_bot_id:
-            await db.delete(capture)
-            await db.flush()
-            capture = None
-        if capture and capture.provider_status in TERMINAL and capture.id not in self.live:
-            capture.provider_bot_id = None
-            capture.provider_status = None
-            capture.status = "starting"
-            capture.detail = "Reconnecting the meeting voice agent."
-        elif capture:
-            # One bot per assigned meeting. Never blindly retry a potentially accepted POST.
-            return self.output(capture, meeting.id)
-        if capture is None:
-            capture = MeetingCapture(meeting_id=meeting.id, organization_id=meeting.organization_id)
-            db.add(capture)
+            raise HTTPException(409, "No occurrence is currently available to join")
+        capture = await db.scalar(
+            select(MeetingCapture).where(
+                MeetingCapture.meeting_id == meeting.id,
+                MeetingCapture.provider_occurrence_id == meeting.next_occurrence_id,
+            )
+        )
+        active = await self.capture(db, meeting.id)
+        if capture:
+            return self.output(capture, meeting)
+        if active and active.status in {
+            "starting",
+            "unknown",
+            "joining",
+            "waiting",
+            "connected",
+            "stopping",
+        }:
+            return self.output(active, meeting)
+        if scheduled and (not meeting.auto_join or meeting.status != "scheduled"):
+            return self.output(active, meeting)
+        capture = MeetingCapture(
+            meeting_id=meeting.id,
+            organization_id=meeting.organization_id,
+            provider_occurrence_id=meeting.next_occurrence_id,
+            scheduled_starts_at=meeting.next_starts_at,
+            scheduled_ends_at=meeting.next_ends_at,
+            title=meeting.next_title or meeting.title,
+            meet_url=meeting.next_meet_url,
+            agenda=meeting.agenda,
+        )
+        db.add(capture)
         await db.flush()
         await db.commit()  # Durable deduplication identity before external side effects.
         token = jwt.encode(
@@ -144,7 +197,7 @@ class MeetingVoiceService:
                 "POST",
                 "bots",
                 json={
-                    "meeting_url": meeting.meet_url,
+                    "meeting_url": capture.meet_url,
                     "bot_name": constants.MEETING_VOICE_NAME,
                     "deduplication_key": str(capture.id),
                     "automatic_leave_settings": {
@@ -177,7 +230,7 @@ class MeetingVoiceService:
             await db.commit()
             raise HTTPException(502, capture.detail) from None
         await db.commit()
-        return self.output(capture, meeting.id)
+        return self.output(capture, meeting)
 
     def apply_state(self, capture, meeting, provider_state):
         capture.provider_status = provider_state
@@ -186,15 +239,20 @@ class MeetingVoiceService:
         )
         capture.detail = capture.detail.replace("Sia", constants.MEETING_VOICE_NAME)
         capture.updated_at = capture.last_synced_at = utcnow()
-        if capture.status == "connected":
-            meeting.status = "in_progress"
-        elif provider_state == "ended":
-            meeting.status = "completed"
-        elif provider_state == "fatal_error":
-            meeting.status = "failed"
+        # Session state belongs to the capture. A late status response for yesterday
+        # must not complete or fail tomorrow's definition.
+        if (
+            provider_state in TERMINAL
+            and not meeting.is_recurring
+            and meeting.next_occurrence_id == capture.provider_occurrence_id
+        ):
+            from app.integrations.google_meet_calendar import clear_next
 
-    async def status(self, db, meeting):
-        capture = await self.capture(db, meeting.id)
+            clear_next(meeting)
+            meeting.status = "completed"
+
+    async def status(self, db, meeting, capture=None):
+        capture = capture or await self.capture(db, meeting.id)
         if capture and capture.provider_bot_id and capture.provider_status not in TERMINAL:
             synced = capture.last_synced_at
             if synced and synced.tzinfo is None:
@@ -220,7 +278,7 @@ class MeetingVoiceService:
             runtime = self.live.get(capture.id)
             if runtime:
                 await runtime.websocket.close(code=1000)
-        return self.output(capture, meeting.id)
+        return self.output(capture, meeting)
 
     async def stop(self, db, meeting):
         capture = await self.capture(db, meeting.id, lock=True)
@@ -233,7 +291,7 @@ class MeetingVoiceService:
             if runtime:
                 runtime.interrupt()
                 await runtime.websocket.close(code=1000)
-        return self.output(capture, meeting.id)
+        return self.output(capture, meeting)
 
     async def save_turn(self, capture_id, speaker, text, role, addressed):
         entry = {
@@ -293,7 +351,7 @@ class MeetingVoiceService:
         runtime = MeetingVoice(
             websocket,
             capture,
-            meeting,
+            SimpleNamespace(title=capture.title, agenda=capture.agenda),
             self.speech,
             save,
             list(capture.transcript[-60:]),

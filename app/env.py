@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     meeting_bot_email: str = ""
     meeting_token_key: SecretStr = SecretStr("")
     ice_servers: list[dict] = []
+    exotel_account_sid: str = Field(default="", pattern=r"^[A-Za-z0-9_-]*$")
+    exotel_api_key: SecretStr = SecretStr("")
+    exotel_api_token: SecretStr = SecretStr("")
+    exotel_api_host: str = "api.in.exotel.com"
+    exotel_caller_id: str = ""
+    outreach_public_backend_url: str = Field(default="", max_length=200)
+    clinic_public_backend_url: str = Field(default="", max_length=200)
+    clinic_operator_user_ids: list[UUID] = []
 
     @field_validator("database_url")
     @classmethod
@@ -43,7 +51,14 @@ class Settings(BaseSettings):
             ) from None
         return value
 
-    @field_validator("meeting_public_backend_url")
+    @field_validator("exotel_api_host")
+    @classmethod
+    def valid_exotel_host(cls, value):
+        if value not in {"api.in.exotel.com", "api.exotel.com"}:
+            raise ValueError("Unsupported Exotel region host")
+        return value
+
+    @field_validator("meeting_public_backend_url", "outreach_public_backend_url", "clinic_public_backend_url")
     @classmethod
     def valid_service_url(cls, value, info):
         if not value:

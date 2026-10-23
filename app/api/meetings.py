@@ -7,20 +7,26 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from sqlalchemy import select
 
 from app.api.dependencies import DB, CurrentUser
-from app.business.meeting_calendar import assign_event, organizer_organizations
+from app.business.meeting_calendar import assign_event, aware, organizer_organizations
 from app.business.organizations import list_organizations, require_membership
 from app.constants import constants
 from app.db.models import (
     Meeting,
     MeetingCalendar,
-    MeetingCalendarEvent,
+    MeetingCapture,
     MeetingGoogleConnection,
-    MeetingSeries,
     utcnow,
 )
 from app.env import get_settings
 from app.integrations.google_meet_calendar import lock
-from app.types import AssignMeeting, EventOut, MeetingOut, MeetingSchedule, OrgOut
+from app.types import (
+    AssignMeeting,
+    EventOut,
+    MeetingCaptureOut,
+    MeetingOut,
+    MeetingSchedule,
+    OrgOut,
+)
 
 router = APIRouter(tags=["meetings"])
 
@@ -73,15 +79,15 @@ async def inbox(
 ):
     return (
         await db.scalars(
-            select(MeetingCalendarEvent)
+            select(Meeting)
             .where(
-                MeetingCalendarEvent.organizer_email.is_not(None),
-                MeetingCalendarEvent.organizer_email == user.calendar_email,
-                MeetingCalendarEvent.meeting_id.is_(None),
-                MeetingCalendarEvent.cancelled.is_(False),
-                MeetingCalendarEvent.ends_at > utcnow(),
+                Meeting.organizer_email.is_not(None),
+                Meeting.organizer_email == user.calendar_email,
+                Meeting.organization_id.is_(None),
+                Meeting.status != "cancelled",
+                Meeting.next_ends_at > utcnow(),
             )
-            .order_by(MeetingCalendarEvent.starts_at, MeetingCalendarEvent.id)
+            .order_by(Meeting.next_starts_at, Meeting.id)
             .offset(offset)
             .limit(limit)
         )
@@ -93,11 +99,11 @@ async def assign(event_id: UUID, data: AssignMeeting, db: DB, user: CurrentUser)
     # Same lock as sync; prevent assignment from racing a cancellation or another assignment.
     await lock(db)
     event = await db.scalar(
-        select(MeetingCalendarEvent)
+        select(Meeting)
         .where(
-            MeetingCalendarEvent.id == event_id,
-            MeetingCalendarEvent.organizer_email.is_not(None),
-            MeetingCalendarEvent.organizer_email == user.calendar_email,
+            Meeting.id == event_id,
+            Meeting.organizer_email.is_not(None),
+            Meeting.organizer_email == user.calendar_email,
         )
         .with_for_update()
     )
@@ -107,47 +113,8 @@ async def assign(event_id: UUID, data: AssignMeeting, db: DB, user: CurrentUser)
     if not any(org.id == data.organization_id for org in organizations):
         raise HTTPException(404, "Workspace not found")
     meeting = await assign_event(db, event, data.organization_id, data.agenda, data.auto_join)
-    if data.assign_series and event.recurring_event_id:
-        series = await db.scalar(
-            select(MeetingSeries).where(
-                MeetingSeries.calendar_id == event.calendar_id,
-                MeetingSeries.provider_series_id == event.recurring_event_id,
-            )
-        )
-        if series and (
-            series.organization_id != data.organization_id
-            or series.organizer_email not in (None, event.organizer_email)
-        ):
-            raise HTTPException(409, "This series belongs to another workspace")
-        if not series:
-            db.add(
-                MeetingSeries(
-                    organizer_email=event.organizer_email,
-                    calendar_id=event.calendar_id,
-                    provider_series_id=event.recurring_event_id,
-                    organization_id=data.organization_id,
-                    agenda=data.agenda,
-                    auto_join=data.auto_join,
-                )
-            )
-        else:
-            series.organizer_email = event.organizer_email
-        occurrences = (
-            await db.scalars(
-                select(MeetingCalendarEvent).where(
-                    MeetingCalendarEvent.calendar_id == event.calendar_id,
-                    MeetingCalendarEvent.recurring_event_id == event.recurring_event_id,
-                    MeetingCalendarEvent.organizer_email == event.organizer_email,
-                    MeetingCalendarEvent.cancelled.is_(False),
-                    MeetingCalendarEvent.ends_at > utcnow(),
-                )
-            )
-        ).all()
-        for occurrence in occurrences:
-            if occurrence.meet_url and occurrence.starts_at and occurrence.original_starts_at:
-                await assign_event(
-                    db, occurrence, data.organization_id, data.agenda, data.auto_join
-                )
+    # A recurring definition is always assigned as a whole. The deprecated
+    # assign_series input remains accepted for older clients.
     await db.commit()
     return meeting
 
@@ -165,7 +132,7 @@ async def meetings(
         await db.scalars(
             select(Meeting)
             .where(Meeting.organization_id == org_id)
-            .order_by(Meeting.starts_at.desc(), Meeting.id)
+            .order_by(Meeting.next_starts_at.desc().nulls_last(), Meeting.id)
             .offset(offset)
             .limit(limit)
         )
@@ -187,7 +154,7 @@ async def join_status(org_id: UUID, meeting_id: UUID, db: DB, user: CurrentUser,
     meeting = await owned_meeting(db, org_id, meeting_id, user.id)
     service = request.app.state.meeting_voice
     capture = await service.capture(db, meeting.id)
-    return {**service.output(capture, meeting.id), "auto_join": meeting.auto_join}
+    return {**service.output(capture, meeting), "auto_join": meeting.auto_join}
 
 
 @router.post("/organizations/{org_id}/meetings/{meeting_id}/join", status_code=202)
@@ -225,8 +192,37 @@ async def schedule_meeting(
 ):
     meeting = await owned_meeting(db, org_id, meeting_id, operator.id)
     await db.refresh(meeting, with_for_update=True)
-    if meeting.status != "scheduled" or meeting.ends_at <= utcnow():
+    if meeting.status != "scheduled" or (
+        not meeting.is_recurring
+        and (not meeting.next_ends_at or aware(meeting.next_ends_at) <= utcnow())
+    ):
         raise HTTPException(409, "Only upcoming scheduled meetings can change auto-join")
     meeting.auto_join = data.auto_join
     await db.commit()
     return meeting
+
+
+@router.get(
+    "/organizations/{org_id}/meetings/{meeting_id}/captures", response_model=list[MeetingCaptureOut]
+)
+async def captures(
+    org_id: UUID,
+    meeting_id: UUID,
+    db: DB,
+    user: CurrentUser,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
+    await owned_meeting(db, org_id, meeting_id, user.id)
+    return (
+        await db.scalars(
+            select(MeetingCapture)
+            .where(
+                MeetingCapture.meeting_id == meeting_id,
+                MeetingCapture.organization_id == org_id,
+            )
+            .order_by(MeetingCapture.scheduled_starts_at.desc(), MeetingCapture.id)
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()

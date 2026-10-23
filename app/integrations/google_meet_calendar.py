@@ -12,11 +12,17 @@ from sqlalchemy import select, text
 
 from app.business.meeting_calendar import auto_assign_event
 from app.constants import constants
-from app.constants.constants import CALENDAR_SCOPE, EVENTS_URL, LOCK_ID, SCOPES, TOKEN_URL
+from app.constants.constants import (
+    CALENDAR_SCOPE,
+    EVENTS_URL,
+    LOCK_ID,
+    SCOPES,
+    TOKEN_URL,
+)
 from app.db.models import (
     Meeting,
     MeetingCalendar,
-    MeetingCalendarEvent,
+    MeetingCapture,
     MeetingGoogleConnection,
     utcnow,
 )
@@ -265,51 +271,6 @@ def meet_link(event):
     return None
 
 
-async def apply_event(db, calendar_id, data):
-    event = await db.scalar(
-        select(MeetingCalendarEvent).where(
-            MeetingCalendarEvent.calendar_id == calendar_id,
-            MeetingCalendarEvent.provider_event_id == data["id"],
-        )
-    )
-    if event is None:
-        event = MeetingCalendarEvent(calendar_id=calendar_id, provider_event_id=data["id"])
-        db.add(event)
-    event.cancelled = data.get("status") == "cancelled"
-    if not event.cancelled:
-        event.organizer_email = (
-            data.get("organizer", {}).get("email") or ""
-        ).strip().lower() or None
-        event.ical_uid = data.get("iCalUID")
-        event.recurring_event_id = data.get("recurringEventId")
-        event.original_starts_at = parse_instant(data.get("originalStartTime", {}).get("dateTime"))
-        event.title = data.get("summary")
-        event.meet_url = meet_link(data)
-        event.starts_at = parse_instant(data.get("start", {}).get("dateTime"))
-        event.ends_at = parse_instant(data.get("end", {}).get("dateTime"))
-        # All-day/non-Meet events are stored but never eligible for dispatch.
-    if event.meeting_id:
-        meeting = await db.get(Meeting, event.meeting_id)
-        if meeting and meeting.status == "scheduled":
-            valid = (
-                not event.cancelled
-                and event.meet_url
-                and event.starts_at
-                and event.ends_at
-                and event.ends_at > event.starts_at
-            )
-            if valid:
-                meeting.starts_at, meeting.ends_at = event.starts_at, event.ends_at
-                meeting.meet_url = event.meet_url
-                meeting.title = (event.title or "Meeting")[:500]
-            else:
-                meeting.status = "cancelled"
-            meeting.updated_at = utcnow()
-    await db.flush()
-    await auto_assign_event(db, event)
-    return event
-
-
 class Unauthorized(CalendarError):
     pass
 
@@ -323,61 +284,173 @@ async def calendar_get(client, url, token, **kwargs):
     return response
 
 
-async def sync_calendar(db, client, calendar, token, settings, now):
-    # A bounded snapshot expands recurring events, including new occurrences each day.
-    # Never combine this moving window with Google's incremental syncToken.
-    start, end = now - timedelta(days=1), now + timedelta(days=constants.MEETING_SYNC_DAYS)
-    url = EVENTS_URL.format(quote(calendar.google_calendar_id, safe=""))
-    params = {
-        "singleEvents": "true",
-        "showDeleted": "true",
-        "maxResults": 2500,
-        "timeMin": start.isoformat(),
-        "timeMax": end.isoformat(),
-        "timeZone": "UTC",
-    }
-    seen, pages = set(), set()
-    count = 0
+async def pages(client, url, token, params):
+    """Read every page before making scheduling decisions; never truncate exceptions."""
+    params = dict(params)
+    seen = set()
     while True:
         data = body(await calendar_get(client, url, token, params=params))
-        for item in data.get("items", []):
-            await apply_event(db, calendar.id, item)
-            seen.add(item["id"])
-            count += 1
+        yield data.get("items", [])
         page = data.get("nextPageToken")
         if not page:
-            break
-        if page in pages:
+            return
+        if page in seen:
             raise CalendarError("Google repeated a pagination token; sync rolled back.")
-        pages.add(page)
+        seen.add(page)
         params["pageToken"] = page
+
+
+def clear_next(meeting):
+    meeting.next_occurrence_id = None
+    meeting.next_starts_at = meeting.next_ends_at = None
+    meeting.next_meet_url = meeting.next_title = None
+
+
+def occurrence(data, now):
+    if data.get("status") == "cancelled":
+        return None
+    start = parse_instant(data.get("start", {}).get("dateTime"))
+    end = parse_instant(data.get("end", {}).get("dateTime"))
+    url = meet_link(data)
+    if not start or not end or not url or end <= now or end <= start:
+        return None
+    return {
+        "id": data["id"],
+        "start": start,
+        "end": end,
+        "url": url,
+        "title": (data.get("summary") or "Meeting")[:500],
+    }
+
+
+async def apply_definition(db, client, calendar, token, data, now):
+    """Store one master definition and only its next unattempted occurrence."""
+    if data.get("recurringEventId"):
+        return  # Modified/cancelled instances are resolved by the master's instances API.
+    meeting = await db.scalar(
+        select(Meeting)
+        .where(Meeting.calendar_id == calendar.id, Meeting.provider_event_id == data["id"])
+        .with_for_update()
+    )
+    if data.get("status") == "cancelled":
+        if meeting:
+            meeting.status = "cancelled"
+            clear_next(meeting)
+            meeting.updated_at = now
+        return
+    if meeting is None:
+        meeting = Meeting(
+            calendar_id=calendar.id,
+            provider_event_id=data["id"],
+            title="Meeting",
+            meet_url="",
+            agenda="",
+            auto_join=False,
+        )
+        db.add(meeting)
+    organizer = (data.get("organizer", {}).get("email") or "").strip().lower() or None
+    if meeting.organization_id and meeting.organizer_email and organizer != meeting.organizer_email:
+        # A transferred series must not silently bring a new organizer's calls into
+        # the old workspace. Keep its existing assignment/history and stop future joins.
+        meeting.auto_join = False
+        meeting.status = "cancelled"
+        clear_next(meeting)
+        meeting.updated_at = now
+        return meeting
+    meeting.title = (data.get("summary") or "Meeting")[:500]
+    meeting.meet_url = meet_link(data) or ""
+    meeting.organizer_email = organizer
+    meeting.timezone = data.get("start", {}).get("timeZone") or "UTC"
+    meeting.recurrence = data.get("recurrence") or []
+    meeting.is_recurring = bool(meeting.recurrence)
+    meeting.updated_at = now
     await db.flush()
-    # A disappeared event might have moved outside the window. Look it up rather
-    # than treating absence as cancellation. Only reconcile previously timed events.
-    previous = (
+    attempted = set(
         await db.scalars(
-            select(MeetingCalendarEvent).where(
-                MeetingCalendarEvent.calendar_id == calendar.id,
-                MeetingCalendarEvent.cancelled.is_(False),
-                MeetingCalendarEvent.ends_at > start,
-                MeetingCalendarEvent.starts_at < end,
+            select(MeetingCapture.provider_occurrence_id).where(
+                MeetingCapture.meeting_id == meeting.id
             )
         )
-    ).all()
-    for event in previous:
-        if event.provider_event_id in seen:
-            continue
-        response = await calendar_get(
-            client, url + "/" + quote(event.provider_event_id, safe=""), token
+    )
+    candidates = []
+    if meeting.is_recurring:
+        url = EVENTS_URL.format(quote(calendar.google_calendar_id, safe=""))
+        url += "/" + quote(meeting.provider_event_id, safe="") + "/instances"
+        # Google expands the rules/exceptions, but these occurrences stay in memory.
+        # A definition with nothing in this window is checked again on later syncs.
+        async for items in pages(
+            client,
+            url,
+            token,
+            {
+                "timeMin": now.isoformat(),
+                "timeMax": (now + timedelta(days=constants.MEETING_SYNC_DAYS)).isoformat(),
+                "showDeleted": "false",
+                "maxResults": 2500,
+                "timeZone": "UTC",
+            },
+        ):
+            for item in items:
+                candidate = occurrence(item, now)
+                if candidate and candidate["id"] not in attempted:
+                    candidates.append(candidate)
+    else:
+        candidate = occurrence(data, now)
+        if candidate and candidate["id"] not in attempted:
+            candidates.append(candidate)
+    clear_next(meeting)
+    if candidates:
+        selected = min(candidates, key=lambda item: (item["start"], item["id"]))
+        meeting.next_occurrence_id = selected["id"]
+        meeting.next_starts_at, meeting.next_ends_at = selected["start"], selected["end"]
+        meeting.next_meet_url, meeting.next_title = selected["url"], selected["title"]
+    meeting.status = "scheduled" if meeting.is_recurring or candidates else "completed"
+    await auto_assign_event(db, meeting)
+    return meeting
+
+
+async def sync_calendar(db, client, calendar, token, settings, now):
+    url = EVENTS_URL.format(quote(calendar.google_calendar_id, safe=""))
+    masters = {}
+    exception_masters = set()
+    async for items in pages(
+        client,
+        url,
+        token,
+        {
+            "singleEvents": "false",
+            "showDeleted": "true",
+            "maxResults": 2500,
+            "timeMin": (now - timedelta(days=1)).isoformat(),
+            "timeMax": (now + timedelta(days=constants.MEETING_SYNC_DAYS)).isoformat(),
+            "timeZone": "UTC",
+        },
+    ):
+        for item in items:
+            if item.get("recurringEventId"):
+                exception_masters.add(item["recurringEventId"])
+            else:
+                masters[item["id"]] = item
+    # A series can move outside the window or end. Refresh known definitions directly
+    # instead of mistaking absence for deletion. Also resolve exception-only results.
+    known = list(
+        await db.scalars(
+            select(Meeting.provider_event_id).where(Meeting.calendar_id == calendar.id)
         )
-        item = (
-            {"id": event.provider_event_id, "status": "cancelled"}
+    )
+    for provider_id in set(known) | exception_masters:
+        if provider_id in masters:
+            continue
+        response = await calendar_get(client, url + "/" + quote(provider_id, safe=""), token)
+        masters[provider_id] = (
+            {"id": provider_id, "status": "cancelled"}
             if response.status_code in (404, 410)
             else body(response)
         )
-        await apply_event(db, calendar.id, item)
+    for data in masters.values():
+        await apply_definition(db, client, calendar, token, data, now)
     calendar.last_synced_at = now
-    return count
+    return len(masters)
 
 
 async def sync(db, client, settings):

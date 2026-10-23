@@ -236,13 +236,33 @@ class MeetingOut(BaseModel):
     id: UUID
     organization_id: UUID
     title: str
-    meet_url: str
-    starts_at: datetime
-    ends_at: datetime
+    meet_url: str = Field(validation_alias="display_meet_url")
+    starts_at: datetime | None
+    ends_at: datetime | None
     timezone: str
     agenda: str
     status: str
     auto_join: bool
+    is_recurring: bool
+    next_occurrence_id: str | None
+    next_starts_at: datetime | None
+    next_ends_at: datetime | None
+    next_meet_url: str | None
+
+
+class MeetingCaptureOut(ORMModel):
+    id: UUID
+    meeting_id: UUID
+    provider_occurrence_id: str
+    scheduled_starts_at: datetime
+    scheduled_ends_at: datetime
+    title: str
+    meet_url: str
+    status: str
+    provider_status: str | None
+    memory_status: str
+    memory_error: str | None
+    created_at: datetime
 
 
 class EventOut(BaseModel):
@@ -250,7 +270,7 @@ class EventOut(BaseModel):
     id: UUID
     recurring_event_id: str | None
     title: str | None
-    meet_url: str | None
+    meet_url: str | None = Field(validation_alias="display_meet_url")
     starts_at: datetime | None
     ends_at: datetime | None
     cancelled: bool

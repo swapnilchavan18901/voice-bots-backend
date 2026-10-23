@@ -21,7 +21,10 @@ __pycache__/
 .ruff_cache/
 
 # Local verification artifacts
-/tests/
+/tests/*
+!/tests/test_outreach.py
+!/tests/test_meeting_definitions.py
+!/tests/test_clinic_phone.py
 .coverage
 htmlcov/
 coverage/

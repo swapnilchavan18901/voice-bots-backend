@@ -125,7 +125,6 @@ def faq(state) -> NodeConfig:
                 "choose_reschedule", "Caller now wants to move an appointment.", h.choose_reschedule
             ),
             _fn("choose_cancel", "Caller now wants to cancel an appointment.", h.choose_cancel),
-            _fn("end_call", "Caller has no more questions.", h.end_call),
         ],
     }
 
@@ -267,7 +266,6 @@ def close(state: dict) -> NodeConfig:
         ),
         "functions": [
             _fn("another_request", "Caller needs something else.", h.another_request),
-            _fn("end_call", "Caller is done.", h.end_call),
         ],
     }
 
@@ -337,6 +335,7 @@ def global_functions() -> list:
             {"topic": {"type": "string", "enum": TOPICS}},
             ["topic"],
         ),
+        _fn("end_call", "Caller asks to stop or end this call.", h.end_call),
     ]
 
 

@@ -2,7 +2,11 @@
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.worker import PipelineParams, PipelineWorker, ProcessorUnusablePolicy
+from pipecat.pipeline.worker import (
+    PipelineParams,
+    PipelineWorker,
+    ProcessorUnusablePolicy,
+)
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -32,6 +36,29 @@ def build_webrtc(
         connection,
         TransportParams(audio_in_enabled=True, audio_out_enabled=True),
     )
+    return build_voice(
+        transport,
+        bot,
+        settings,
+        messages=messages,
+        system_prompt=system_prompt,
+        text_filters=text_filters,
+        input_processors=input_processors,
+    )
+
+
+def build_voice(
+    transport,
+    bot,
+    settings,
+    *,
+    messages=(),
+    system_prompt=None,
+    text_filters=(),
+    input_processors=(),
+    output_sample_rate=24000,
+):
+    """Use the same speech processing for browser and phone transports."""
     stt, llm, tts = create_sarvam_services(
         settings,
         bot.language,
@@ -58,7 +85,9 @@ def build_webrtc(
             ]
         ),
         app_resources={},
-        params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=24000),
+        params=PipelineParams(
+            audio_in_sample_rate=16000, audio_out_sample_rate=output_sample_rate
+        ),
         processor_unusable_policy=ProcessorUnusablePolicy.END,
     )
     runner = WorkerRunner(handle_sigint=False)

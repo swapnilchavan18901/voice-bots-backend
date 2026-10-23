@@ -16,4 +16,13 @@ dependencies = [
   "pipecat-ai[sarvam,webrtc,silero]==1.12.0",
   "httpx>=0.28,<1",
   "cryptography>=46,<51",
+  "python-multipart>=0.0.20,<1",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.20,<1",
+    "pytest>=8,<10",
+    "pytest-asyncio>=0.24,<2",
+    "ruff>=0.11,<1",
 ]

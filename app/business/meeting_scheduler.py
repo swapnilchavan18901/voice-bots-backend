@@ -41,12 +41,16 @@ def start(service):
                 await db.scalars(
                     select(Meeting.id).where(
                         Meeting.auto_join.is_(True),
+                        Meeting.organization_id.is_not(None),
                         Meeting.status == "scheduled",
-                        Meeting.starts_at <= now,
-                        Meeting.starts_at >= now - timedelta(minutes=10),
-                        Meeting.ends_at > now,
+                        Meeting.next_starts_at <= now,
+                        Meeting.next_starts_at >= now - timedelta(minutes=10),
+                        Meeting.next_ends_at > now,
                         ~select(MeetingCapture.id)
-                        .where(MeetingCapture.meeting_id == Meeting.id)
+                        .where(
+                            MeetingCapture.meeting_id == Meeting.id,
+                            MeetingCapture.provider_occurrence_id == Meeting.next_occurrence_id,
+                        )
                         .exists(),
                     )
                 )
@@ -65,19 +69,20 @@ def start(service):
         async with SessionFactory() as db:
             ids = list(
                 await db.scalars(
-                    select(MeetingCapture.meeting_id).where(
+                    select(MeetingCapture.id).where(
                         MeetingCapture.provider_bot_id.is_not(None),
                         MeetingCapture.provider_status.not_in(TERMINAL),
                     )
                 )
             )
-        for meeting_id in ids:
+        for capture_id in ids:
             try:
                 async with SessionFactory() as db:
-                    meeting = await db.get(Meeting, meeting_id)
-                    await service.status(db, meeting)
+                    capture = await db.get(MeetingCapture, capture_id)
+                    meeting = await db.get(Meeting, capture.meeting_id)
+                    await service.status(db, meeting, capture=capture)
             except Exception:
-                logger.warning("Meeting status refresh failed for %s", meeting_id)
+                logger.warning("Meeting status refresh failed for %s", capture_id)
 
     async def memories():
         async with SessionFactory() as db:

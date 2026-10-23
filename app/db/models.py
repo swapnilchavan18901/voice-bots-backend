@@ -194,56 +194,72 @@ class MeetingCalendar(IdentityMixin, Base):
 
 
 class Meeting(IdentityMixin, Base):
+    """One calendar definition per standalone event or recurring series.
+
+    organization_id is NULL while this definition is in its organizer's private inbox.
+    Only the next joinable occurrence is persisted; Google resolves recurrence rules.
+    """
+
     __tablename__ = "meetings"
     __table_args__ = (
         UniqueConstraint("organization_id", "id", name="uq_meeting_org_id"),
-        UniqueConstraint("organization_id", "occurrence_key", name="uq_meeting_occurrence"),
-        CheckConstraint("ends_at > starts_at", name="ck_meeting_time_range"),
+        UniqueConstraint("calendar_id", "provider_event_id", name="uq_meeting_definition"),
         CheckConstraint(
-            "status IN ('scheduled', 'cancelled', 'in_progress', 'completed', 'failed')",
+            "(next_occurrence_id IS NULL AND next_starts_at IS NULL AND next_ends_at IS NULL) "
+            "OR (next_occurrence_id IS NOT NULL AND next_starts_at IS NOT NULL "
+            "AND next_ends_at IS NOT NULL AND next_ends_at > next_starts_at)",
+            name="ck_meeting_next_occurrence",
+        ),
+        CheckConstraint(
+            "status IN ('scheduled', 'cancelled', 'completed')",
             name="ck_meeting_status",
         ),
     )
-    organization_id: Mapped[UUID] = mapped_column(
+    organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), index=True
     )
-    # Stable across reschedules; derived from event UID + original recurrence start.
-    occurrence_key: Mapped[str] = mapped_column(String(512))
+    calendar_id: Mapped[UUID | None] = mapped_column(ForeignKey("meeting_calendars.id"))
+    provider_event_id: Mapped[str] = mapped_column(String(1024))
+    organizer_email: Mapped[str | None] = mapped_column(String(320), index=True)
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
+    recurrence: Mapped[list] = mapped_column(JSON, default=list)
     title: Mapped[str] = mapped_column(String(500))
-    meet_url: Mapped[str] = mapped_column(Text)
-    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    meet_url: Mapped[str] = mapped_column(Text, default="")
     timezone: Mapped[str] = mapped_column(String(100), default="UTC")
     agenda: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
     auto_join: Mapped[bool] = mapped_column(Boolean, default=False)
+    next_occurrence_id: Mapped[str | None] = mapped_column(String(1024))
+    next_starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    next_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_meet_url: Mapped[str | None] = mapped_column(Text)
+    next_title: Mapped[str | None] = mapped_column(String(500))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    # Compatibility fields for the existing dashboard/inbox API.
+    @property
+    def display_meet_url(self):
+        return self.next_meet_url or self.meet_url
 
-class MeetingCalendarEvent(IdentityMixin, Base):
-    """Private organizer discovery inbox. Assignment grants workspace meeting visibility."""
+    @property
+    def starts_at(self):
+        return self.next_starts_at
 
-    __tablename__ = "meeting_calendar_events"
-    __table_args__ = (
-        UniqueConstraint("calendar_id", "provider_event_id", name="uq_meeting_calendar_event"),
-    )
-    calendar_id: Mapped[UUID] = mapped_column(
-        ForeignKey("meeting_calendars.id", ondelete="CASCADE")
-    )
-    provider_event_id: Mapped[str] = mapped_column(String(1024))
-    organizer_email: Mapped[str | None] = mapped_column(String(320), index=True)
-    meeting_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("meetings.id", ondelete="SET NULL"), index=True
-    )
-    ical_uid: Mapped[str | None] = mapped_column(Text)
-    recurring_event_id: Mapped[str | None] = mapped_column(String(1024))
-    original_starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    title: Mapped[str | None] = mapped_column(Text)
-    meet_url: Mapped[str | None] = mapped_column(Text)
-    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Cancelled event tombstones may contain only the provider ID.
-    cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
+    @property
+    def ends_at(self):
+        return self.next_ends_at
+
+    @property
+    def recurring_event_id(self):
+        return self.provider_event_id if self.is_recurring else None
+
+    @property
+    def meeting_id(self):
+        return self.id if self.organization_id else None
+
+    @property
+    def cancelled(self):
+        return self.status == "cancelled"
 
 
 class MeetingCapture(IdentityMixin, Base):
@@ -257,10 +273,18 @@ class MeetingCapture(IdentityMixin, Base):
             name="fk_meeting_capture_owner",
             ondelete="CASCADE",
         ),
-        UniqueConstraint("meeting_id", name="uq_meeting_capture_meeting"),
+        UniqueConstraint(
+            "meeting_id", "provider_occurrence_id", name="uq_meeting_capture_occurrence"
+        ),
     )
     organization_id: Mapped[UUID] = mapped_column(index=True)
     meeting_id: Mapped[UUID] = mapped_column(index=True)
+    provider_occurrence_id: Mapped[str] = mapped_column(String(1024))
+    scheduled_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    scheduled_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    title: Mapped[str] = mapped_column(String(500))
+    meet_url: Mapped[str] = mapped_column(Text)
+    agenda: Mapped[str] = mapped_column(Text, default="")
     provider_bot_id: Mapped[str | None] = mapped_column(String(100), unique=True)
     speaker_names: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(30), default="starting")
@@ -284,18 +308,89 @@ class MeetingMemory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-class MeetingSeries(IdentityMixin, Base):
-    __tablename__ = "meeting_series"
-    __table_args__ = (
-        UniqueConstraint("calendar_id", "provider_series_id", name="uq_meeting_series"),
-    )
-    calendar_id: Mapped[UUID] = mapped_column(
-        ForeignKey("meeting_calendars.id", ondelete="CASCADE")
-    )
-    organizer_email: Mapped[str | None] = mapped_column(String(320))
-    provider_series_id: Mapped[str] = mapped_column(String(1024))
+class OutreachAgent(IdentityMixin, Base):
+    __tablename__ = "outreach_agents"
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE")
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
     )
-    agenda: Mapped[str] = mapped_column(Text, default="")
-    auto_join: Mapped[bool] = mapped_column(Boolean, default=True)
+    name: Mapped[str] = mapped_column(String(100))
+    sales_context: Mapped[str] = mapped_column(Text)
+    language: Mapped[str] = mapped_column(String(20))
+
+
+class OutreachCampaign(IdentityMixin, Base):
+    __tablename__ = "outreach_campaigns"
+    __table_args__ = (
+        CheckConstraint("mode IN ('sequential', 'parallel')"),
+        CheckConstraint("status IN ('draft', 'running', 'stopping', 'completed', 'cancelled')"),
+    )
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    agent_id: Mapped[UUID] = mapped_column(ForeignKey("outreach_agents.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    mode: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    # Immutable run configuration: later agent edits do not change an existing campaign.
+    agent_snapshot: Mapped[dict] = mapped_column(JSON)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OutreachCall(IdentityMixin, Base):
+    __tablename__ = "outreach_calls"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "position"),
+        UniqueConstraint("campaign_id", "phone_number"),
+        CheckConstraint(
+            "status IN ('pending', 'dialing', 'unknown', 'queued', 'ringing', "
+            "'in-progress', 'completed', 'failed', 'busy', 'no-answer', 'cancelled')"
+        ),
+        Index("ix_outreach_calls_campaign_status", "campaign_id", "status"),
+    )
+    campaign_id: Mapped[UUID] = mapped_column(
+        ForeignKey("outreach_campaigns.id", ondelete="CASCADE")
+    )
+    position: Mapped[int]
+    phone_number: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(120), default="")
+    context: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    provider_call_sid: Mapped[str | None] = mapped_column(String(128), unique=True)
+    stream_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(String(255))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ClinicPhoneRoute(IdentityMixin, Base):
+    __tablename__ = "clinic_phone_routes"
+    bot_id: Mapped[UUID] = mapped_column(
+        ForeignKey("bots.id", ondelete="CASCADE"), unique=True
+    )
+    phone_number: Mapped[str] = mapped_column(String(20), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    token_version: Mapped[UUID] = mapped_column(default=uuid4)
+
+
+class ClinicPhoneCall(IdentityMixin, Base):
+    __tablename__ = "clinic_phone_calls"
+    __table_args__ = (
+        UniqueConstraint("bot_id", "request_id"),
+        CheckConstraint("direction IN ('inbound', 'outbound')"),
+        CheckConstraint(
+            "status IN ('dialing', 'unknown', 'queued', 'ringing', 'in-progress', "
+            "'completed', 'failed', 'busy', 'no-answer', 'cancelled')"
+        ),
+    )
+    bot_id: Mapped[UUID] = mapped_column(
+        ForeignKey("bots.id", ondelete="CASCADE"), index=True
+    )
+    request_id: Mapped[UUID | None]
+    direction: Mapped[str] = mapped_column(String(20))
+    phone_number: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20))
+    provider_call_sid: Mapped[str | None] = mapped_column(String(128), unique=True)
+    stream_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(String(255))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

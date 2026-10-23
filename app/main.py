@@ -8,14 +8,18 @@ from app.api import (
     auth,
     bots,
     clinic,
+    clinic_phone,
     health,
     meetings,
     organizations,
+    outreach,
     platform,
     public,
 )
+from app.business.clinic_phone import ClinicPhoneService
 from app.business.meeting_scheduler import start as start_meeting_scheduler
 from app.business.meeting_voice import MeetingVoiceService
+from app.business.outreach_worker import OutreachService
 from app.constants.constants import PRODUCT_NAME
 from app.db.session import engine
 from app.env import get_settings
@@ -27,9 +31,15 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.meeting_voice = MeetingVoiceService(settings)
     app.state.voice = VoiceSessions(get_settings())
+    app.state.outreach = OutreachService(settings)
+    app.state.outreach.start()
+    app.state.clinic_phone = ClinicPhoneService(settings, app.state.outreach.provider)
+    app.state.clinic_phone.start()
     public_app.state.voice = app.state.voice
     start_meeting_scheduler(app.state.meeting_voice)
     yield
+    await app.state.clinic_phone.close()
+    await app.state.outreach.close()
     await app.state.meeting_voice.close()
     await app.state.voice.close()
     await engine.dispose()
@@ -51,6 +61,10 @@ for router in (
     clinic.router,
     platform.router,
     meetings.router,
+    outreach.router,
+    outreach.provider_router,
+    clinic_phone.router,
+    clinic_phone.provider_router,
 ):
     app.include_router(router, prefix="/api/v1")
 
