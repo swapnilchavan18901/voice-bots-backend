@@ -584,3 +584,34 @@ def test_telephony_tokens_redacted_from_uvicorn_logs():
     )
     AudioGrantLogFilter().filter(record)
     assert "secret" not in record.getMessage() and "[redacted]" in record.getMessage()
+
+
+@pytest.mark.asyncio
+async def test_phone_capabilities_follow_membership_and_operator_role(env):
+    response = await env.client.get(env.path + "/capabilities")
+    assert response.status_code == 200
+    assert response.json() == {
+        "can_view_route": True,
+        "can_manage_route": True,
+        "can_call": True,
+        "inbound_ready": True,
+        "outbound_ready": True,
+    }
+    env.settings.clinic_operator_user_ids = []
+    result = (await env.client.get(env.path + "/capabilities")).json()
+    assert result["can_call"] and not result["can_manage_route"]
+    env.actor["user"] = env.member
+    result = (await env.client.get(env.path + "/capabilities")).json()
+    assert (
+        not result["can_view_route"]
+        and not result["can_call"]
+        and not result["can_manage_route"]
+    )
+    env.settings.exotel_caller_id = ""
+    result = (await env.client.get(env.path + "/capabilities")).json()
+    assert result["inbound_ready"] and not result["outbound_ready"]
+    env.settings.sarvam_api_key = type(env.settings.sarvam_api_key)("")
+    result = (await env.client.get(env.path + "/capabilities")).json()
+    assert not result["inbound_ready"] and not result["outbound_ready"]
+    env.actor["user"] = env.stranger
+    assert (await env.client.get(env.path + "/capabilities")).status_code == 404

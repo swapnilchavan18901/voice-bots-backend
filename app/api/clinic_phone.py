@@ -46,7 +46,8 @@ async def capabilities(
         inbound_ready = False
     return {
         "can_view_route": manager,
-        "can_manage_route": manager and user.id in service.settings.clinic_operator_user_ids,
+        "can_manage_route": manager
+        and user.id in service.settings.clinic_operator_user_ids,
         "can_call": manager,
         "inbound_ready": inbound_ready,
         "outbound_ready": inbound_ready and bool(service.settings.exotel_caller_id),
@@ -64,10 +65,7 @@ async def get_route(
     if not route:
         raise HTTPException(404, "No inbound number configured")
     result = PhoneRouteOut.model_validate(route)
-    if (
-        route.enabled
-        and request.app.state.clinic_phone.settings.public_backend_url
-    ):
+    if route.enabled and request.app.state.clinic_phone.settings.public_backend_url:
         result.inbound_stream_url = request.app.state.clinic_phone.inbound_url(route)
     return result
 
