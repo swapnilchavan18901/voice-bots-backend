@@ -368,7 +368,7 @@ app/
 └── core/                    Operator command-line entry points
 ```
 
-Change model names, speech defaults, filler timing, session limits, and calendar sync duration in the constants file. Environment configuration holds values that differ between deployments: credentials, database location, OAuth account identity, operator IDs, public callback origin, CORS origins, and ICE servers. Domain workflows retain their own orchestration; shared helpers are imported from `utils`.
+Change model names, speech defaults, filler timing, session limits, and calendar sync duration in the constants file. Environment configuration holds values that differ between deployments: credentials, database location, OAuth account identity, operator IDs, public callback origin, CORS origins, and Metered management credentials. STUN/TURN URLs are static in the constants file. Domain workflows retain their own orchestration; shared helpers are imported from `utils`.
 
 ## Sia Outreach: outbound AI sales campaigns
 
@@ -383,3 +383,56 @@ Clinic agents support the existing browser WebRTC interface and Exotel phone
 calls using the same conversation flow and appointment tools. Inbound ExoPhone
 routing, authorized outbound calls, deduplication, status callbacks and recovery
 are described in [Clinic phone setup and APIs](docs/clinic-phone.md).
+
+
+## Temporary TURN credentials
+
+Browser voice fetches an authenticated ICE configuration before gathering candidates.
+Metered management secrets stay on the backend. Set these in Render (and the local
+backend `.env` when testing):
+
+```dotenv
+METERED_DOMAIN=your-app.metered.live
+METERED_SECRET_KEY=your-metered-management-secret
+```
+
+Use the account-level Secret Key from Metered **Developers**, not a TURN password
+or credential-scoped API key. The domain has no scheme or trailing slash. The server
+URLs remain static in `app/constants/constants.py`.
+
+Run `uv run alembic upgrade head` before starting the backend. Migration `0014` adds
+an encrypted credential cache. Keep `JWT_SECRET` stable across restarts: a separate
+Fernet key is derived from it for this cache. Rotating the JWT secret invalidates
+cached credentials and triggers another warm-up; it does not revoke provider credentials.
+
+The background service creates a two-hour credential and rotates hourly. It waits
+120 seconds for propagation, serves the previous credential during rotation, and
+only issues credentials with enough remaining lifetime for a full 30-minute call.
+Expired credentials cannot be handed to new callers. State is persisted across
+Render restarts; after the initial deployment or a long sleep with no usable
+credential, new calls receive 503 with `Retry-After` until the relay is ready.
+Health checks remain available during this warm-up.
+
+The dashboard requests `GET /api/v1/organizations/{org_id}/bots/{bot_id}/voice/ice-servers`
+with its login bearer token. Bot membership is required. Public integrations request
+`GET /api/v1/public/bots/{bot_id}/webrtc/ice-servers` with an unused, unexpired voice
+grant before sending their offer. Both return `ice_servers` and, when TURN is enabled,
+`expires_at`; responses use `Cache-Control: no-store`. The backend uses the same
+prepared credential pool for its own peer connection.
+
+Credential retrieval is limited to 10 requests per minute per authenticated user
+(or per customer API key for public grants). This limiter is process-local: keep the
+existing single-worker deployment, or add a shared gateway limit before scaling.
+Provider failures use a five-minute creation cooldown. Check server warnings and the
+Metered dashboard for invalid management secrets or credential-plan limits.
+
+When both Metered settings are empty, local development uses STUN only. A partially
+configured service rejects voice configuration requests rather than silently using
+an incomplete relay setup. Never put the management secret in a `NEXT_PUBLIC_*`
+variable. Remove the old `NEXT_PUBLIC_TURN_USERNAME`, `NEXT_PUBLIC_TURN_PASSWORD`,
+`NEXT_PUBLIC_ICE_SERVERS`, `TURN_USERNAME`, `TURN_PASSWORD`, and `ICE_SERVERS` settings.
+Rebuild Vercel to remove permanent credentials from the client bundle, then revoke
+the old permanent credential in Metered. Temporary credentials remain visible to
+authorized callers and can still consume quota until they expire.
+
+The lifecycle follows [Metered's rotation guidance](https://www.metered.ca/docs/turnserver-guides/rotating-turn-credentials/).

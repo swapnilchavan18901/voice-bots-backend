@@ -22,6 +22,17 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class IceServerConfig(BaseModel):
+    urls: str
+    username: str | None = None
+    credential: str | None = None
+
+
+class VoiceIceConfig(BaseModel):
+    ice_servers: list[IceServerConfig]
+    expires_at: datetime | None
+
+
 class Credentials(BaseModel):
     email: EmailStr
     password: str = Field(min_length=10, max_length=128)

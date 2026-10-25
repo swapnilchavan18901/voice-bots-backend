@@ -25,6 +25,12 @@ class Base(DeclarativeBase):
     pass
 
 
+class TurnCredentialState(Base):
+    __tablename__ = "turn_credential_state"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    encrypted_state: Mapped[str] = mapped_column(Text, default="")
+
+
 class IdentityMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

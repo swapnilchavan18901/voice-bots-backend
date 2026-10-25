@@ -24,8 +24,9 @@ class Session:
 
 
 class VoiceSessions:
-    def __init__(self, settings):
+    def __init__(self, settings, turn=None):
         self.settings = settings
+        self.turn = turn
         self.sessions: dict[str, Session] = {}
         self.pending = 0
         self.closing = False
@@ -40,7 +41,10 @@ class VoiceSessions:
         connection = None
         try:
             from aiortc.sdp import SessionDescription
-            from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
+            from pipecat.transports.smallwebrtc.connection import (
+                IceServer,
+                SmallWebRTCConnection,
+            )
 
             from app.ai.pipeline import build_pipeline
 
@@ -51,8 +55,13 @@ class VoiceSessions:
                     raise ValueError("Audio and a control data channel are required")
             except (ValueError, AssertionError, IndexError) as exc:
                 raise HTTPException(400, "Offer must contain audio and a data channel") from exc
+            config = (
+                await self.turn.configuration()
+                if self.turn
+                else {"ice_servers": [{"urls": constants.STUN_URL}]}
+            )
             connection = SmallWebRTCConnection(
-                ice_servers=[IceServer(**server) for server in self.settings.ice_servers],
+                ice_servers=[IceServer(**server) for server in config["ice_servers"]],
                 connection_timeout_secs=30,
             )
             try:

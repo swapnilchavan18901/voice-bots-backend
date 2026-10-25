@@ -20,8 +20,9 @@ from app.business.clinic_phone import ClinicPhoneService
 from app.business.meeting_scheduler import start as start_meeting_scheduler
 from app.business.meeting_voice import MeetingVoiceService
 from app.business.outreach_worker import OutreachService
+from app.business.turn_credentials import TurnCredentials
 from app.constants.constants import PRODUCT_NAME
-from app.db.session import engine
+from app.db.session import SessionFactory, engine
 from app.env import get_settings
 from app.utils.cors import DashboardCORSMiddleware
 
@@ -30,18 +31,22 @@ from app.utils.cors import DashboardCORSMiddleware
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.meeting_voice = MeetingVoiceService(settings)
-    app.state.voice = VoiceSessions(get_settings())
+    app.state.turn = TurnCredentials(settings, SessionFactory)
+    app.state.turn.start()
+    app.state.voice = VoiceSessions(settings, app.state.turn)
     app.state.outreach = OutreachService(settings)
     app.state.outreach.start()
     app.state.clinic_phone = ClinicPhoneService(settings, app.state.outreach.provider)
     app.state.clinic_phone.start()
     public_app.state.voice = app.state.voice
+    public_app.state.turn = app.state.turn
     start_meeting_scheduler(app.state.meeting_voice)
     yield
     await app.state.clinic_phone.close()
     await app.state.outreach.close()
     await app.state.meeting_voice.close()
     await app.state.voice.close()
+    await app.state.turn.close()
     await engine.dispose()
 
 
@@ -75,7 +80,7 @@ public_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["POST", "DELETE"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 public_app.include_router(public.router)

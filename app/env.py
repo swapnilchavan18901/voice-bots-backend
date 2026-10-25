@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr = SecretStr("")
     meeting_bot_email: str = ""
     meeting_token_key: SecretStr = SecretStr("")
-    ice_servers: list[dict] = []
+    metered_domain: str = Field(
+        default="", pattern=r"^(?:[a-z0-9][a-z0-9-]*\.metered\.live)?$"
+    )
+    metered_secret_key: SecretStr = SecretStr("")
     exotel_account_sid: str = Field(default="", pattern=r"^[A-Za-z0-9_-]*$")
     exotel_api_key: SecretStr = SecretStr("")
     exotel_api_token: SecretStr = SecretStr("")
@@ -112,26 +115,6 @@ class Settings(BaseSettings):
                 or url.path
             ):
                 raise ValueError("CORS_ORIGINS must contain HTTP(S) origins without paths")
-        return values
-
-    @field_validator("ice_servers")
-    @classmethod
-    def valid_ice_servers(cls, values):
-        for server in values:
-            if set(server) - {"urls", "username", "credential"}:
-                raise ValueError("Unsupported ICE server option")
-            urls = server.get("urls")
-            urls = [urls] if isinstance(urls, str) else urls
-            if (
-                not isinstance(urls, list)
-                or not urls
-                or any(
-                    not isinstance(url, str)
-                    or not url.startswith(("stun:", "stuns:", "turn:", "turns:"))
-                    for url in urls
-                )
-            ):
-                raise ValueError("ICE servers require STUN or TURN URLs")
         return values
 
 

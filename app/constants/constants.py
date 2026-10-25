@@ -21,6 +21,21 @@ MEETING_SYNC_DAYS = 30
 MAX_VOICE_SESSIONS = 20
 VOICE_SESSION_SECONDS = 1800
 
+STUN_URL = "stun:stun.relay.metered.ca:80"
+TURN_URLS = (
+    "turn:global.relay.metered.ca:80",
+    "turn:global.relay.metered.ca:80?transport=tcp",
+    "turn:global.relay.metered.ca:443",
+    "turns:global.relay.metered.ca:443?transport=tcp",
+)
+TURN_CREDENTIAL_SECONDS = 7200
+TURN_ROTATION_SECONDS = 3600
+TURN_PROPAGATION_SECONDS = 120
+TURN_REFRESH_SECONDS = 30
+TURN_RETRY_SECONDS = 300
+TURN_MIN_REMAINING_SECONDS = VOICE_SESSION_SECONDS + 120
+TURN_REQUESTS_PER_MINUTE = 10
+
 FILLERS = {
     "en-IN": "One moment, let me check that for you.",
     "hi-IN": "एक पल, मैं देख रही हूँ।",
