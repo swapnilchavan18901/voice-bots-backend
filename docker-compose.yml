@@ -1,8 +1,7 @@
 services:
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: 905418072258.dkr.ecr.ap-south-1.amazonaws.com/voicebots:latest
+    pull_policy: always
     restart: unless-stopped
     init: true
     env_file:
