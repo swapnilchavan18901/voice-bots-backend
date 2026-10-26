@@ -2,8 +2,7 @@ FROM python:3.12-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
+ENV UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /app
@@ -13,7 +12,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project --no-cache \
+    && find /app/.venv -type d -name __pycache__ -prune -exec rm -rf '{}' +
+
+COPY app ./app
+RUN find /app/app -type d -name __pycache__ -prune -exec rm -rf '{}' +
 
 FROM python:3.12-slim-bookworm AS runtime
 
@@ -25,14 +28,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates ffmpeg libsndfile1 libgomp1 \
+    && apt-get install -y --no-install-recommends ca-certificates libsndfile1 libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 appuser \
     && chown appuser:appuser /app
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --chown=appuser:appuser alembic.ini ./
-COPY --chown=appuser:appuser app ./app
+COPY --from=builder --chown=appuser:appuser /app/app ./app
 
 USER appuser
 
