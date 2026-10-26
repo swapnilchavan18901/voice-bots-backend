@@ -13,6 +13,23 @@ from app.constants import constants
 logger = logging.getLogger(__name__)
 
 
+def _prepare_remote_sdp(description):
+    # Browser mDNS hostnames are only resolvable on its local network. When
+    # public/TURN candidates exist, avoid involving the cloud server's mDNS
+    # transport in negotiation and teardown. Preserve local-only offers.
+    for media in description.media:
+        if any(candidate.type in {"srflx", "relay"} for candidate in media.ice_candidates):
+            media.ice_candidates = [
+                candidate
+                for candidate in media.ice_candidates
+                if not (
+                    candidate.type == "host"
+                    and candidate.ip.lower().rstrip(".").endswith(".local")
+                )
+            ]
+    return str(description)
+
+
 @dataclass
 class Session:
     user_id: UUID
@@ -66,7 +83,9 @@ class VoiceSessions:
             )
             try:
                 async with asyncio.timeout(30):
-                    await connection.initialize(sdp=offer.sdp, type=offer.type)
+                    await connection.initialize(
+                        sdp=_prepare_remote_sdp(description), type=offer.type
+                    )
             except (ValueError, AssertionError) as exc:
                 raise HTTPException(400, "Invalid WebRTC offer") from exc
             except TimeoutError as exc:

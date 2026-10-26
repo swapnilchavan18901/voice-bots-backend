@@ -266,3 +266,63 @@ async def test_public_integration_requires_valid_unused_bot_bound_grant(
         grant.used_at = None
         grant.offer_expires_at = utcnow() - timedelta(seconds=1)
         assert (await client.get(path, headers=headers)).status_code == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fallback", ["srflx", "relay", None])
+async def test_browser_mdns_candidates_with_public_fallback(monkeypatch, fallback):
+    from copy import deepcopy
+
+    import aioice.ice
+    from aiortc import RTCConfiguration, RTCPeerConnection
+    from aiortc.sdp import SessionDescription
+    from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
+
+    from app.ai.sessions import _prepare_remote_sdp
+
+    async def unexpected_mdns(_subscriber):
+        pytest.fail("A cloud offer with public candidates must not resolve browser mDNS")
+
+    monkeypatch.setattr(aioice.ice, "get_or_create_mdns_protocol", unexpected_mdns)
+    browser = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    server = None
+    try:
+        browser.addTransceiver("audio")
+        browser.createDataChannel("pipecat")
+        await browser.setLocalDescription(await browser.createOffer())
+        description = SessionDescription.parse(browser.localDescription.sdp)
+        for media in description.media:
+            assert media.ice_candidates
+            for candidate in media.ice_candidates:
+                candidate.ip = "browser.local"
+            if fallback:
+                public = deepcopy(media.ice_candidates[0])
+                public.ip = "198.51.100.2"
+                public.type = fallback
+                media.ice_candidates.append(public)
+
+        prepared = _prepare_remote_sdp(description)
+        parsed = SessionDescription.parse(prepared)
+        assert {media.kind for media in parsed.media} == {"audio", "application"}
+        assert parsed.group == description.group
+        if not fallback:
+            assert all(
+                candidate.ip == "browser.local"
+                for media in parsed.media
+                for candidate in media.ice_candidates
+            )
+            return
+        assert all(
+            candidate.type == fallback and candidate.ip == "198.51.100.2"
+            for media in parsed.media
+            for candidate in media.ice_candidates
+        )
+        server = SmallWebRTCConnection(ice_servers=[])
+        await asyncio.wait_for(server.initialize(sdp=prepared, type="offer"), timeout=5)
+        assert server.get_answer()["type"] == "answer"
+    finally:
+        if server is not None:
+            # Let aiortc's scheduled connect task start before closing it.
+            await asyncio.sleep(0)
+            await asyncio.wait_for(server.disconnect(), timeout=5)
+        await browser.close()
