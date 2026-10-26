@@ -615,3 +615,54 @@ async def test_phone_capabilities_follow_membership_and_operator_role(env):
     assert not result["inbound_ready"] and not result["outbound_ready"]
     env.actor["user"] = env.stranger
     assert (await env.client.get(env.path + "/capabilities")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_context_text_alone_updates_clinic_runtime_and_clears_old_facts(env):
+    context = """# Context Clinic
+
+## Clinic details
+- Address: Pune
+- Phone: +919876543210
+- Timezone: Asia/Kolkata
+- Hours: Monday–Saturday, 9 AM–6 PM
+- Appointment length: 30 minutes
+- Fees: ₹500 per consultation
+- Parking: Available outside
+- Booking policy: Cancel at least 24 hours in advance
+
+## Doctors
+| Doctor | Specialty |
+| --- | --- |
+| Dr. Mehta | General medicine |
+"""
+    path = f"/api/v1/organizations/{env.org.id}/bots/{env.bot.id}"
+    payload = {"name": env.bot.name, "language": "en-IN", "company_context": context}
+    response = await env.client.put(path, json=payload)
+    assert response.status_code == 200
+    assert response.json()["company_context"] == context
+    async with env.sessions() as db:
+        bot = await db.get(Bot, env.bot.id)
+        runtime = await bots.runtime_bot(db, bot)
+        facts = runtime.clinic_facts
+        assert runtime.company_context == context
+        assert facts["clinic_name"] == "Context Clinic"
+        assert facts["address"] == "Pune"
+        assert facts["phone"] == "+919876543210"
+        assert facts["fees"] == "₹500 per consultation"
+        assert facts["parking"] == "Available outside"
+        assert facts["booking"] == "Cancel at least 24 hours in advance"
+        assert facts["booking_ready"] is True
+        assert [(d["name"], d["specialty"]) for d in facts["doctors"]] == [
+            ("Dr. Mehta", "General medicine")
+        ]
+
+    # Clearing context must not reuse the previous form's facts or cached doctors.
+    response = await env.client.put(path, json={**payload, "company_context": ""})
+    assert response.status_code == 200
+    async with env.sessions() as db:
+        runtime = await bots.runtime_bot(db, await db.get(Bot, env.bot.id))
+        assert runtime.company_context == ""
+        assert runtime.clinic_facts["clinic_name"] is None
+        assert runtime.clinic_facts["doctors"] == []
+        assert runtime.clinic_facts["booking_ready"] is False

@@ -31,12 +31,6 @@ async def authorize(db, org_id, bot_id, user, write=False):
     await db.commit()
 
 
-@router.get("/info")
-async def info(org_id: UUID, bot_id: UUID, db: DB, user: CurrentUser):
-    await authorize(db, org_id, bot_id, user)
-    return await clinic.clinic_info(db, bot_id)
-
-
 @router.get("/availability")
 async def availability(
     org_id: UUID, bot_id: UUID, day: date, db: DB, user: CurrentUser, doctor_id: int | None = None
