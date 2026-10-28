@@ -226,6 +226,12 @@ class OutreachService:
         await self.dispatch_pending()
 
     def start(self):
+        # Deployment settings are fixed until restart; avoid idle polling when disabled.
+        try:
+            self.require_ready()
+        except HTTPException:
+            return
+
         async def loop(action):
             while True:
                 try:

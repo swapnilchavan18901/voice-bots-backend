@@ -336,6 +336,26 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 - **Team invitations:** a workspace owner or admin creates an invitation for a specific email and role. The recipient accepts the token while signed in. Owner-only rules govern invitations granting admin access; delivery of the token is a separate user action.
 - **Credential lifecycle:** authorized workspace managers create and revoke integration keys. The raw key is shown at creation, while subsequent access uses its stored digest.
 - **Independent background work:** calendar sync, scheduled joins, provider status refresh, memory updates, and retention run as separate periodic tasks. A failed cycle is logged and retried without ending the other loops.
+
+Background loops run once at startup, then wait after each completed cycle:
+
+| Work | Delay | When started |
+| --- | --- | --- |
+| Calendar sync | 15 minutes | Google client ID, bot email and token encryption key configured; sync requires a connected calendar |
+| Scheduled meeting joins | 10 seconds | Meeting voice provider ready |
+| Meeting provider status | 15 seconds | Meeting voice provider ready |
+| Meeting memory processing | 1 hour | Sarvam configured |
+| Memory retention cleanup | 12 hours | Always |
+| Outreach status and dispatch (two loops) | 5 seconds each | Outreach integration configured |
+| Clinic phone status recovery | 5 seconds | Clinic phone integration configured |
+| TURN credential refresh check | 30 seconds | Both Metered settings configured |
+
+Memory still retains fourteen UTC calendar days; the twelve-hour interval controls cleanup frequency.
+Calendar sync still imports changes and advances recurring occurrences; no push webhook replaces it.
+Phone status polling recovers missed callbacks and interrupted dispatches. TURN rotation prepares
+expiring relay credentials for browser calls. Integration settings are loaded at startup, so restart
+the backend after configuring an integration. Active voice sessions also have session-scoped tasks;
+these are not scheduled jobs.
 - **External side effects:** meeting join records establish a durable deduplication identity before contacting Attendee. An ambiguous provider response is treated as unknown instead of blindly creating another bot.
 - **Visible degradation:** provider failures surface as connection or processing states. A failed speech turn can leave the meeting assistant listening for the next turn.
 

@@ -317,6 +317,12 @@ class ClinicPhoneService:
                 logger.warning("Clinic phone status refresh failed for %s", call.id)
 
     def start(self):
+        # Deployment settings are fixed until restart; avoid idle polling when disabled.
+        try:
+            self.require_ready()
+        except HTTPException:
+            return
+
         async def loop():
             while True:
                 try:

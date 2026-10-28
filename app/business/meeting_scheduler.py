@@ -7,6 +7,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 
 from app.clients import create_google_client
+from app.constants import constants
 from app.constants.constants import TERMINAL
 from app.db.models import Meeting, MeetingCapture, MeetingGoogleConnection, utcnow
 from app.db.session import SessionFactory
@@ -107,13 +108,16 @@ def start(service):
                         capture.memory_error = "Memory update failed; automatic retry is pending."
                         await db.commit()
 
-    service.tasks = [
-        asyncio.create_task(repeat(action, seconds))
-        for action, seconds in (
-            (calendar, 60),
-            (dispatch, 10),
-            (statuses, 15),
-            (memories, 60),
-            (service.memory.cleanup, 3600),
-        )
-    ]
+    jobs = [(service.memory.cleanup, constants.MEETING_RETENTION_CLEANUP_SECONDS)]
+    settings = service.settings
+    if (
+        settings.google_client_id
+        and settings.meeting_bot_email
+        and settings.meeting_token_key.get_secret_value()
+    ):
+        jobs.append((calendar, constants.MEETING_CALENDAR_SYNC_SECONDS))
+    if service.ready:
+        jobs.extend(((dispatch, 10), (statuses, 15)))
+    if settings.sarvam_api_key.get_secret_value():
+        jobs.append((memories, constants.MEETING_MEMORY_PROCESS_SECONDS))
+    service.tasks = [asyncio.create_task(repeat(action, seconds)) for action, seconds in jobs]
