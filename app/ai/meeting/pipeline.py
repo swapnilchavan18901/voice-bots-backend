@@ -56,7 +56,7 @@ class MeetingVoice:
         if message.get("trigger") != "realtime_audio.per_participant":
             return
         if message.get("bot_id") != self.capture.provider_bot_id:
-            raise ValueError("Unexpected bot identity")
+            raise ValueError("Unexpected assistant identity")
         data = message.get("data", {})
         participant = data.get("participant_uuid")
         if not isinstance(participant, str) or len(participant) > 200:
@@ -147,7 +147,7 @@ class MeetingVoice:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self.error = "A speech turn could not be processed. The bot is still listening."
+                self.error = "A speech turn could not be processed. The assistant is still listening."
             finally:
                 self.queue.task_done()
 
@@ -190,7 +190,7 @@ class MeetingVoice:
         except asyncio.CancelledError:
             raise
         except Exception:
-            self.error = "The bot could not finish its reply. It is still listening."
+            self.error = "The assistant could not finish its reply. It is still listening."
         finally:
             if generation == self.generation:
                 self.phase = "listening"

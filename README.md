@@ -1,8 +1,10 @@
-# Sia Backend
+# Audiva
+
+Backend service for the Audiva voice operations platform.
 
 ## Purpose and architectural approach
 
-Sia connects voice conversations to concrete business workflows: booking a clinic visit, answering a question during a meeting, and carrying useful meeting context forward. This backend owns those workflows, their access rules, and the lifecycle of the external services involved.
+Audiva connects voice conversations to concrete business workflows: booking a clinic visit, answering a question during a meeting, and carrying useful meeting context forward. This backend owns those workflows, their access rules, and the lifecycle of the external services involved.
 
 The central design decision is to separate conversational interpretation from business authority. Speech models understand and generate language; business components decide what may happen, validate the action, and persist the outcome. The frontend receives information prepared for the current user and workspace.
 
@@ -55,13 +57,13 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- Membership and resource ownership are checked on the backend. Knowing an identifier does not grant access to another workspace's bot, patient, meeting, or key.
-- The workspace overview assembles feature-specific bot lists, active templates, team information, and management capabilities in one place.
+- Membership and resource ownership are checked on the backend. Knowing an identifier does not grant access to another workspace's agent, patient, meeting, or key.
+- The workspace overview assembles feature-specific agent lists, active templates, team information, and management capabilities in one place.
 - Removing membership takes effect on subsequent requests. A previously issued sign-in token does not preserve workspace access.
 - Platform operator privileges and workspace membership are separate responsibilities. Meeting controls still require access to the relevant workspace.
 - Organization selection, feature classification, patient counts, and visit eligibility are prepared server-side. Local search and selected tabs remain presentation concerns.
 
-## 2. Bot configuration and template lifecycle
+## 2. Agent configuration and template lifecycle
 
 ```text
 ┌──────────────────────────────┐    ┌──────────────────────────────┐
@@ -83,9 +85,9 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-- Bot configuration supplies business-specific information without exposing platform system prompts through the workspace overview.
+- Agent configuration supplies business-specific information without exposing platform system prompts through the workspace overview.
 - Clinic context supplies clinic facts, doctors, scheduling details, and timezone information. The backend interprets that context and synchronizes the doctor configuration used by booking.
-- Runtime preparation selects the correct domain pipeline. Meetings have their own calendar and participant-audio lifecycle rather than entering through the browser bot dispatcher.
+- Runtime preparation selects the correct domain pipeline. Meetings have their own calendar and participant-audio lifecycle rather than entering through the browser agent dispatcher.
 
 ## 3. Clinic receptionist and appointment workflow
 
@@ -258,9 +260,9 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 
 - **Attendee is the transport bridge:** it joins the meeting, supplies participant audio, and plays the synthesized reply. It is present on both sides of the STT–LLM–TTS loop.
 - **Speaker handling:** each participant has separate voice-activity state. Completed speech turns are transcribed and retained for meeting context.
-- **Response gating:** ordinary discussion contributes context. A direct address triggers the answer path, including a short follow-up window when the user initially says only the bot's name.
+- **Response gating:** ordinary discussion contributes context. A direct address triggers the answer path, including a short follow-up window when the user initially says only the agent's name.
 - **Grounding:** the answer uses the agenda, participant discussion, and retained workspace memory. Scope checks limit the assistant to meeting-related questions.
-- **Evidence discipline:** questions and previous bot answers are not treated as proof that a task was assigned or completed. The assistant distinguishes proposals, commitments, and confirmed outcomes.
+- **Evidence discipline:** questions and previous agent answers are not treated as proof that a task was assigned or completed. The assistant distinguishes proposals, commitments, and confirmed outcomes.
 - **Interruption:** new human speech invalidates pending replies and cancels ongoing generation/output work. Audio already delivered to the provider may still play briefly.
 - **Playback:** replies are normalized for speech and streamed as paced audio frames. Optional filler speech covers a slow answer without becoming part of the factual transcript.
 
@@ -294,7 +296,7 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 ```
 
 - Memory belongs to the workspace, so it can connect discussions across meetings assigned there.
-- Updates summarize human turns; bot replies do not become independent evidence.
+- Updates summarize human turns; agent replies do not become independent evidence.
 - Large transcripts are processed in bounded chunks. Workspace updates are serialized, and processed text is removed only with the successful memory update.
 - Failed updates remain eligible for retry. Retention cleanup also removes aged raw text so failures do not create indefinite transcript storage.
 - Memory is limited to fourteen UTC calendar days. Missing historical information remains unknown.
@@ -304,7 +306,7 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ SERVER-SIDE INTEGRATION                                      │
-│ Workspace credential → short-lived bot-bound grant           │
+│ Workspace credential → short-lived agent-bound grant           │
 └──────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -328,8 +330,8 @@ Sarvam supplies STT, LLM, and TTS services. Pipecat orchestrates browser voice s
 
 - General conversation shares the browser audio infrastructure with the clinic feature but has its own conversational configuration.
 - External integrations keep the long-lived credential on the customer server. The browser receives a limited voice grant.
-- A grant can start at most one call; token consumption is atomic. Expiry, bot ownership, and credential revocation are checked when resolving it.
-- Session management handles connection ownership, duration limits, disconnects, and cleanup. Dashboard test grounds use authenticated workspace access to the same domain pipelines.
+- A grant can start at most one call; token consumption is atomic. Expiry, agent ownership, and credential revocation are checked when resolving it.
+- Session management handles connection ownership, duration limits, disconnects, and cleanup. Dashboard voice previews use authenticated workspace access to the same domain pipelines.
 
 ## 9. Team collaboration and operational resilience
 
@@ -341,7 +343,7 @@ Background loops run once at startup, then wait after each completed cycle:
 
 | Work | Delay | When started |
 | --- | --- | --- |
-| Calendar sync | 15 minutes | Google client ID, bot email and token encryption key configured; sync requires a connected calendar |
+| Calendar sync | 15 minutes | Google client ID, agent email and token encryption key configured; sync requires a connected calendar |
 | Scheduled meeting joins | 10 seconds | Meeting voice provider ready |
 | Meeting provider status | 15 seconds | Meeting voice provider ready |
 | Meeting memory processing | 1 hour | Sarvam configured |
@@ -356,7 +358,7 @@ Phone status polling recovers missed callbacks and interrupted dispatches. TURN 
 expiring relay credentials for browser calls. Integration settings are loaded at startup, so restart
 the backend after configuring an integration. Active voice sessions also have session-scoped tasks;
 these are not scheduled jobs.
-- **External side effects:** meeting join records establish a durable deduplication identity before contacting Attendee. An ambiguous provider response is treated as unknown instead of blindly creating another bot.
+- **External side effects:** meeting join records establish a durable deduplication identity before contacting Attendee. An ambiguous provider response is treated as unknown instead of blindly creating another agent.
 - **Visible degradation:** provider failures surface as connection or processing states. A failed speech turn can leave the meeting assistant listening for the next turn.
 
 ## Shared speech behavior
@@ -390,7 +392,7 @@ app/
 
 Change model names, speech defaults, filler timing, session limits, and calendar sync duration in the constants file. Environment configuration holds values that differ between deployments: credentials, database location, OAuth account identity, operator IDs, public callback origin, CORS origins, and Metered management credentials. STUN/TURN URLs are static in the constants file. Domain workflows retain their own orchestration; shared helpers are imported from `utils`.
 
-## Sia Outreach: outbound AI sales campaigns
+## Audiva Outreach: outbound AI sales campaigns
 
 Organizations can create reusable sales agents with their own context, prepare campaigns
 from phone numbers or CSV, and explicitly start calls through Exotel. Execution supports
@@ -434,7 +436,7 @@ credential, new calls receive 503 with `Retry-After` until the relay is ready.
 Health checks remain available during this warm-up.
 
 The dashboard requests `GET /api/v1/organizations/{org_id}/bots/{bot_id}/voice/ice-servers`
-with its login bearer token. Bot membership is required. Public integrations request
+with its login bearer token. Agent membership is required. Public integrations request
 `GET /api/v1/public/bots/{bot_id}/webrtc/ice-servers` with an unused, unexpired voice
 grant before sending their offer. Both return `ice_servers` and, when TURN is enabled,
 `expires_at`; responses use `Cache-Control: no-store`. The backend uses the same

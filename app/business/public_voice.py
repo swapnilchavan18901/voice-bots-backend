@@ -16,7 +16,7 @@ async def create_grant(db, key, bot_id):
         select(Bot).where(Bot.id == bot_id, Bot.organization_id == key.organization_id)
     )
     if not bot:
-        raise HTTPException(404, "Bot not found")
+        raise HTTPException(404, "Agent not found")
     await runtime_bot(db, bot)
     raw = opaque_token()
     now = utcnow()

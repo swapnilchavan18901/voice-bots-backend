@@ -1,4 +1,4 @@
-"""Organization-scoped Sia Outreach agents, campaigns and persistent call queue."""
+"""Organization-scoped Audiva Outreach agents, campaigns and persistent call queue."""
 
 import sqlalchemy as sa
 from alembic import op

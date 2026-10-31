@@ -50,7 +50,7 @@ class TurnCredentials:
         self.task = None
         self.lock = asyncio.Lock()
         self.requests = {}
-        # Domain separation gives this cache its own key without another deployment secret.
+        # Keep the original domain separator so existing encrypted caches survive renames.
         key = hashlib.sha256(
             b"sia-turn-credentials-v1\0"
             + settings.jwt_secret.get_secret_value().encode()
@@ -103,7 +103,7 @@ class TurnCredentials:
                 },
                 json={
                     "expiryInSeconds": constants.TURN_CREDENTIAL_SECONDS,
-                    "label": "sia-voice",
+                    "label": "audiva-voice",
                 },
             )
             response.raise_for_status()

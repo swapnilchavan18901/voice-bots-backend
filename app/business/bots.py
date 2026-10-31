@@ -32,7 +32,7 @@ async def get_bot(db, org_id, bot_id, user_id, write=False):
         query = query.with_for_update()
     bot = await db.scalar(query)
     if not bot:
-        raise HTTPException(404, "Bot not found")
+        raise HTTPException(404, "Agent not found")
     return bot
 
 
@@ -60,7 +60,7 @@ async def active_template(db, template_id):
         select(BotTemplate).where(BotTemplate.id == template_id, BotTemplate.is_active.is_(True))
     )
     if not template:
-        raise HTTPException(404, "Bot template is unavailable")
+        raise HTTPException(404, "Agent template is unavailable")
     return template
 
 

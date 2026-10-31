@@ -6,7 +6,7 @@ from app.api.dependencies import DB, CurrentUser
 from app.business import bots
 from app.types import Answer, BotConfig, BotCreate, BotOut, Offer, VoiceIceConfig
 
-router = APIRouter(prefix="/organizations/{org_id}/bots", tags=["bots"])
+router = APIRouter(prefix="/organizations/{org_id}/bots", tags=["Agents"])
 
 
 @router.get("", response_model=list[BotOut])

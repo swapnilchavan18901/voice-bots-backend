@@ -4,7 +4,7 @@ import re
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-PRODUCT_NAME = "Sia"
+PRODUCT_NAME = "Audiva"
 ACCESS_TOKEN_MINUTES = 60
 SARVAM_LLM_MODEL = "sarvam-105b"
 SARVAM_STT_MODEL = "saaras:v4"
@@ -186,16 +186,16 @@ TIME = {"type": "string", "description": "YYYY-MM-DDTHH:MM, clinic local time"}
 MANAGE_ROLES = frozenset({"owner", "admin"})
 
 STATES = {
-    "ready": ("starting", "The bot is preparing to join."),
-    "joining": ("joining", "The bot is joining the meeting."),
-    "waiting_room": ("waiting", "Admit the bot from the host account."),
+    "ready": ("starting", "The assistant is preparing to join."),
+    "joining": ("joining", "The assistant is joining the meeting."),
+    "waiting_room": ("waiting", "Admit the assistant from the host account."),
     "joined_not_recording": ("connected", "Waiting for recording permission."),
-    "joined_recording": ("connected", "Listening. Address Sia by name to ask a question."),
-    "leaving": ("stopping", "The bot is leaving."),
-    "post_processing": ("stopped", "The bot left; meeting media is processing."),
+    "joined_recording": ("connected", "Listening. Address Audiva by name to ask a question."),
+    "leaving": ("stopping", "The assistant is leaving."),
+    "post_processing": ("stopped", "The assistant left; meeting media is processing."),
     "ended": ("stopped", "The meeting session ended."),
-    "fatal_error": ("failed", "Attendee could not join or remain in the meeting."),
-    "data_deleted": ("stopped", "Meeting media was deleted from Attendee."),
+    "fatal_error": ("failed", "The assistant could not join or remain in the meeting."),
+    "data_deleted": ("stopped", "The meeting recording was deleted."),
 }
 
 TERMINAL = {"ended", "fatal_error", "data_deleted"}

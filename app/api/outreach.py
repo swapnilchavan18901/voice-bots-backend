@@ -37,7 +37,7 @@ from app.outreach_types import (
     parse_contacts_csv,
 )
 
-router = APIRouter(prefix="/organizations/{org_id}/outreach", tags=["Sia Outreach"])
+router = APIRouter(prefix="/organizations/{org_id}/outreach", tags=["Audiva Outreach"])
 provider_router = APIRouter(prefix="/outreach/exotel", tags=["Exotel callbacks"])
 
 
@@ -87,7 +87,7 @@ async def contacts_template(org_id: UUID, db: DB, user: CurrentUser):
         'phone_number,name,context\n+919876543210,Example Customer,"Interested in the standard plan"\n',
         media_type="text/csv",
         headers={
-            "Content-Disposition": 'attachment; filename="sia-outreach-contacts.csv"'
+            "Content-Disposition": 'attachment; filename="audiva-outreach-contacts.csv"'
         },
     )
 

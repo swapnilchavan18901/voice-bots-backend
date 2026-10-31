@@ -89,7 +89,7 @@ class MeetingVoiceService:
             "capture_id": capture.id if capture else None,
             "provider_occurrence_id": capture.provider_occurrence_id if capture else None,
             "status": capture.status if capture else "idle",
-            "detail": capture.detail if capture else "The bot has not joined this meeting.",
+            "detail": capture.detail if capture else "The assistant has not joined this meeting.",
             "updated_at": capture.updated_at if capture else None,
             "voice_state": runtime.phase if runtime else "disconnected",
             "voice_error": runtime.error if runtime else None,
@@ -224,7 +224,7 @@ class MeetingVoiceService:
         except Exception:
             capture.status = "unknown"
             capture.detail = (
-                "Bot creation is unconfirmed. Check Attendee before retrying; "
+                "The meeting connection is unconfirmed. Contact your administrator before retrying; "
                 "no duplicate will be sent."
             )
             await db.commit()
@@ -235,9 +235,9 @@ class MeetingVoiceService:
     def apply_state(self, capture, meeting, provider_state):
         capture.provider_status = provider_state
         capture.status, capture.detail = STATES.get(
-            provider_state, ("joining", "Checking bot status.")
+            provider_state, ("joining", "Checking assistant status.")
         )
-        capture.detail = capture.detail.replace("Sia", constants.MEETING_VOICE_NAME)
+        capture.detail = capture.detail.replace("Audiva", constants.MEETING_VOICE_NAME)
         capture.updated_at = capture.last_synced_at = utcnow()
         # Session state belongs to the capture. A late status response for yesterday
         # must not complete or fail tomorrow's definition.
@@ -284,7 +284,7 @@ class MeetingVoiceService:
         capture = await self.capture(db, meeting.id, lock=True)
         if capture and capture.provider_bot_id and capture.provider_status not in TERMINAL:
             await self.attendee.request("POST", f"bots/{capture.provider_bot_id}/leave")
-            capture.status, capture.detail = "stopping", "The bot is leaving the meeting."
+            capture.status, capture.detail = "stopping", "The assistant is leaving the meeting."
             capture.updated_at = utcnow()
             await db.commit()
             runtime = self.live.get(capture.id)

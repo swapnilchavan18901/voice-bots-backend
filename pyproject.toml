@@ -1,7 +1,7 @@
 [project]
-name = "sia-backend"
+name = "audiva"
 version = "0.1.0"
-description = "Organization-scoped Sarvam voice bots over WebRTC"
+description = "Audiva voice operations platform"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.115,<1",
